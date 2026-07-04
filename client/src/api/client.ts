@@ -1,0 +1,77 @@
+const API_BASE = '/api';
+
+async function request(path: string, options: RequestInit = {}) {
+  const token = localStorage.getItem('token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {}),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+export const api = {
+  register(username: string, password: string, nickname?: string) {
+    return request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, nickname }),
+    });
+  },
+
+  login(username: string, password: string) {
+    return request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
+  getProfile() {
+    return request('/auth/profile');
+  },
+
+  getRooms() {
+    return request('/rooms');
+  },
+
+  getOnlineUsers() {
+    return request('/online-users');
+  },
+
+  // Admin
+  getUsers() {
+    return request('/admin/users');
+  },
+
+  updateUserRole(userId: number, role: string) {
+    return request(`/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  deleteUser(userId: number) {
+    return request(`/admin/users/${userId}`, { method: 'DELETE' });
+  },
+
+  getSettings() {
+    return request('/admin/settings');
+  },
+
+  updateSettings(settings: Record<string, string>) {
+    return request('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  createUser(username: string, password: string, nickname: string, role: string) {
+    return request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, nickname, role }),
+    });
+  },
+};
