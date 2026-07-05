@@ -77,15 +77,6 @@ export class UnoEngine {
     }
     this.discardPile.push(card);
     this.currentColor = card.color;
-
-    if (card.type === 'skip') {
-      this.currentPlayerIndex = this.nextPlayerIndex();
-    } else if (card.type === 'reverse') {
-      this.direction *= -1;
-    } else if (card.type === 'draw2') {
-      this.pendingDraw = 2;
-      this.lastDrawValue = 2;
-    }
   }
 
   nextPlayerIndex(fromIndex) {
@@ -151,24 +142,17 @@ export class UnoEngine {
     this.discardPile.push(card);
     this.lastAction = { type: 'play', playerId, card };
 
-    if (player.hand.length === 0) {
-      this.eliminatePlayer(player);
-      return { success: true, eliminated: true };
-    }
-
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
 
     const isDrawCard = card.type === 'draw2' || card.type === 'wild4';
+    const handEmpty = player.hand.length === 0;
 
     if (isDrawCard) {
       const drawValue = card.type === 'draw2' ? 2 : 4;
       this.pendingDraw += drawValue;
       this.lastDrawValue = drawValue;
       this.currentPlayerIndex = this.nextPlayerIndex();
-      return { success: true, stacking: true };
-    }
-
-    if (card.type === 'skip') {
+    } else if (card.type === 'skip') {
       this.currentPlayerIndex = this.nextPlayerIndex();
       this.currentPlayerIndex = this.nextPlayerIndex();
     } else if (card.type === 'reverse') {
@@ -182,6 +166,11 @@ export class UnoEngine {
       }
     } else {
       this.currentPlayerIndex = this.nextPlayerIndex();
+    }
+
+    if (handEmpty) {
+      this.eliminatePlayer(player);
+      return { success: true, eliminated: true };
     }
 
     const nextP = this.players[this.currentPlayerIndex];
@@ -232,9 +221,23 @@ export class UnoEngine {
     player.hand.push(drawn);
 
     this.lastAction = { type: 'draw', playerId };
+
+    if (this.canPlay(drawn)) {
+      return { success: true, card: drawn, canPlayNow: true };
+    }
+
     this.currentPlayerIndex = this.nextPlayerIndex();
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
     return { success: true, card: drawn };
+  }
+
+  declinePlay(playerId) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player || player.isOut) return { error: '无效的玩家' };
+    if (this.players.indexOf(player) !== this.currentPlayerIndex) return { error: '不是你的回合' };
+    this.currentPlayerIndex = this.nextPlayerIndex();
+    this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
+    return { success: true };
   }
 
   callUno(playerId) {
@@ -252,6 +255,7 @@ export class UnoEngine {
   }
 
   eliminatePlayer(player) {
+    const playerIndex = this.players.indexOf(player);
     player.isOut = true;
     this.rankings.push({ playerId: player.id, username: player.username, rank: this.rankings.length + 1 });
     const remaining = this.players.filter(p => !p.isOut);
@@ -261,7 +265,9 @@ export class UnoEngine {
       this.winner = remaining[0];
       return;
     }
-    this.currentPlayerIndex = this.nextPlayerIndex();
+    if (playerIndex === this.currentPlayerIndex) {
+      this.currentPlayerIndex = this.nextPlayerIndex();
+    }
   }
 
   getPublicState(playerId) {

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 
 export default function Login() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const usernameRef = useRef<any>(null);
+  const passwordRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -14,6 +14,9 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const username = usernameRef.current?.value.trim();
+    const password = passwordRef.current?.value;
+    if (!username || !password) { setError('请填写用户名和密码'); return; }
     setLoading(true);
     try {
       const data = await api.login(username, password);
@@ -28,22 +31,22 @@ export default function Login() {
 
   return (
     <div className="auth-page">
-      <div className="auth-box card">
+      <div className="auth-card">
         <h1>🎴 UNO Online</h1>
         <p className="subtitle">联机UNO卡牌游戏</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>用户名</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="输入用户名" required />
+            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <label>密码</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="输入密码" required />
+            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required></md-outlined-text-field>
           </div>
           {error && <div className="form-error">{error}</div>}
-          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
-            {loading ? '登录中...' : '登录'}
-          </button>
+          <div style={{ marginTop: 8 }}>
+            <md-filled-button type="submit" style={{ width: '100%' }} disabled={loading || undefined}>
+              {loading ? '登录中...' : '登录'}
+            </md-filled-button>
+          </div>
         </form>
         <div className="form-footer">
           还没有账号？ <Link to="/register">立即注册</Link>

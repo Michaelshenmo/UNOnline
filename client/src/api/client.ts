@@ -74,4 +74,18 @@ export const api = {
       body: JSON.stringify({ username, password, nickname, role }),
     });
   },
+
+  changePassword(old_password: string, new_password: string) {
+    return request('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify({ old_password, new_password }),
+    });
+  },
+
+  adminResetPassword(userId: number, new_password: string) {
+    return request(`/admin/users/${userId}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ new_password }),
+    });
+  },
 };

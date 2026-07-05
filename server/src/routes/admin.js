@@ -72,4 +72,21 @@ router.post('/users', authenticateToken, requireAdmin, (req, res) => {
   res.json({ message: '用户已创建', user: { id: result.lastInsertRowid, username, nickname: nickname || username, role: userRole } });
 });
 
+router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) => {
+  const { new_password } = req.body;
+  if (!new_password) {
+    return res.status(400).json({ error: '新密码不能为空' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: '新密码至少6个字符' });
+  }
+
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+
+  const hash = bcrypt.hashSync(new_password, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.params.id);
+  res.json({ message: '密码已重置' });
+});
+
 export default router;

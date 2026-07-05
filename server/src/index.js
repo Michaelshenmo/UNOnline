@@ -134,7 +134,7 @@ io.on('connection', (socket) => {
     const result = room.engine.playCard(currentUser.id, cardIndex, color);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
-    if (result.eliminated || room.engine.state === 'finished') {
+    if (room.engine.state === 'finished') {
       io.to(`room:${room.id}`).emit('game_over', {
         rankings: room.engine.rankings,
       });
@@ -146,6 +146,18 @@ io.on('connection', (socket) => {
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room || !room.engine) return;
     const result = room.engine.drawCard(currentUser.id);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    if (result.canPlayNow) {
+      socket.emit('draw_playable', { card: result.card });
+    }
+    broadcastGameState(room);
+  });
+
+  socket.on('decline_play', () => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine) return;
+    const result = room.engine.declinePlay(currentUser.id);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
   });

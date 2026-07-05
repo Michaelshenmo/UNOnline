@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 
 export default function Register() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [nickname, setNickname] = useState('');
+  const usernameRef = useRef<any>(null);
+  const passwordRef = useRef<any>(null);
+  const confirmRef = useRef<any>(null);
+  const nicknameRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -16,10 +16,12 @@ export default function Register() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (password !== confirmPassword) {
-      setError('两次密码不一致');
-      return;
-    }
+    const username = usernameRef.current?.value.trim();
+    const password = passwordRef.current?.value;
+    const confirm = confirmRef.current?.value;
+    const nickname = nicknameRef.current?.value.trim();
+    if (!username || !password) { setError('请填写用户名和密码'); return; }
+    if (password !== confirm) { setError('两次密码不一致'); return; }
     setLoading(true);
     try {
       const data = await api.register(username, password, nickname || undefined);
@@ -34,30 +36,28 @@ export default function Register() {
 
   return (
     <div className="auth-page">
-      <div className="auth-box card">
+      <div className="auth-card">
         <h1>🎴 UNO Online</h1>
         <p className="subtitle">创建新账号</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>用户名</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="3-20个字符" required />
+            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <label>昵称（可选）</label>
-            <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="显示名称" />
+            <md-outlined-text-field ref={nicknameRef} label="昵称（可选）" type="text"></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <label>密码</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少6个字符" required />
+            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <label>确认密码</label>
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="再次输入密码" required />
+            <md-outlined-text-field ref={confirmRef} label="确认密码" type="password" required></md-outlined-text-field>
           </div>
           {error && <div className="form-error">{error}</div>}
-          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
-            {loading ? '注册中...' : '注册'}
-          </button>
+          <div style={{ marginTop: 8 }}>
+            <md-filled-button type="submit" style={{ width: '100%' }} disabled={loading || undefined}>
+              {loading ? '注册中...' : '注册'}
+            </md-filled-button>
+          </div>
         </form>
         <div className="form-footer">
           已有账号？ <Link to="/login">立即登录</Link>
