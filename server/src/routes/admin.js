@@ -89,4 +89,22 @@ router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) =>
   res.json({ message: '密码已重置' });
 });
 
+router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
+  const { username, nickname, role } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+
+  if (username && username !== user.username) {
+    if (username.length < 3 || username.length > 20) return res.status(400).json({ error: '用户名长度3-20个字符' });
+    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id);
+    if (existing) return res.status(400).json({ error: '用户名已存在' });
+  }
+
+  const newUsername = username || user.username;
+  const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
+  const newRole = role || user.role;
+  db.prepare('UPDATE users SET username = ?, nickname = ?, role = ? WHERE id = ?').run(newUsername, newNickname, newRole, req.params.id);
+  res.json({ message: '用户资料已更新' });
+});
+
 export default router;

@@ -25,6 +25,8 @@ export default function Game() {
   const [showUnoButton, setShowUnoButton] = useState(false);
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
+  const [isSpectator, setIsSpectator] = useState(false);
+  const [spectators, setSpectators] = useState<{ id: number; username: string }[]>([]);
   const hasJoined = useRef(false);
 
   const isMyTurn = gameState ? gameState.players[gameState.currentPlayerIndex]?.id === user?.id : false;
@@ -53,6 +55,7 @@ export default function Game() {
       if (m?.hand) setMyHand(m.hand);
       setError('');
       setShowUnoButton(m ? m.cardCount === 1 && !m.calledUno : false);
+      setIsSpectator(!m && state.state !== 'waiting');
     });
 
     s.on('room_info', ({ room }: { room: Room }) => setRoomInfo(room));
@@ -68,6 +71,11 @@ export default function Game() {
     s.on('draw_playable', ({ card }: { card: Card }) => {
       setDrawnCard(card);
       setShowPlayPrompt(true);
+    });
+
+    s.on('spectator_info', ({ spectators: list }: { spectators: { id: number; username: string }[] }) => {
+      setSpectators(list);
+      if (list.some(s => s.id === user?.id)) setIsSpectator(true);
     });
 
     s.on('error', ({ message }: { message: string }) => setError(message));
@@ -121,7 +129,7 @@ export default function Game() {
       <div className="kicked-dialog">
         <h2>房间已解散</h2>
         <p>房主已离开或房间已被关闭</p>
-        <md-filled-button onClick={() => navigate('/lobby')}>返回大厅</md-filled-button>
+        <md-filled-button style={{ minWidth: 140 }} onClick={() => navigate('/lobby')}>返回大厅</md-filled-button>
       </div>
     </div>
   );
@@ -194,6 +202,23 @@ export default function Game() {
         </div>
       )}
 
+      {/* Spectator indicator */}
+      {isSpectator && gameState && gameState.state !== 'finished' && (
+        <div style={{ textAlign: 'center', padding: '4px 0', color: '#aaa', fontSize: 13, fontStyle: 'italic' }}>
+          🎥 观战模式
+        </div>
+      )}
+
+      {/* Spectator list on the left */}
+      {spectators.length > 0 && (
+        <div style={{ position: 'fixed', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'var(--md-sys-color-surface)', borderRadius: 12, padding: 10, boxShadow: 'var(--md-elevation-level2)', zIndex: 50, minWidth: 100 }}>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>观战 ({spectators.length})</div>
+          {spectators.map(s => (
+            <div key={s.id} style={{ fontSize: 12, color: '#ccc', padding: '2px 0', textAlign: 'center' }}>{s.username}</div>
+          ))}
+        </div>
+      )}
+
       {/* Center */}
       <div className="game-center">
         {gameState ? (
@@ -255,7 +280,7 @@ export default function Game() {
       </div>
 
       {/* My hand */}
-      {gameState && (
+      {gameState && !isSpectator && (
         <div className="game-hand">
           <div className="game-hand-label">
             你的手牌 ({myHand.length}张)

@@ -88,4 +88,18 @@ export const api = {
       body: JSON.stringify({ new_password }),
     });
   },
+
+  updateProfile(nickname: string) {
+    return request('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ nickname }),
+    });
+  },
+
+  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; role?: string }) {
+    return request(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 };

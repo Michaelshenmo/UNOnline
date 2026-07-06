@@ -40,6 +40,7 @@ export interface Room {
   id: string;
   hostId: number;
   playerCount: number;
+  spectatorCount?: number;
   players: { id: number; username: string }[];
   state: string;
 }

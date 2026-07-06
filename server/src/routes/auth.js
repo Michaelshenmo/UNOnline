@@ -79,4 +79,13 @@ router.put('/password', authenticateToken, (req, res) => {
   res.json({ message: '密码已修改' });
 });
 
+router.put('/profile', authenticateToken, (req, res) => {
+  const { nickname } = req.body;
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+
+  db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(nickname || req.user.username, req.user.id);
+  res.json({ message: '资料已更新' });
+});
+
 export default router;

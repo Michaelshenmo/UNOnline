@@ -26,6 +26,7 @@ class GameManager {
       id: roomId,
       hostId,
       players: [{ id: hostId, username: hostUsername, ready: false }],
+      spectators: [],
       engine: null,
       state: 'waiting',
     };
@@ -46,6 +47,16 @@ class GameManager {
     return { success: true, room };
   }
 
+  joinSpectator(roomId, userId, username) {
+    const room = this.rooms.get(roomId);
+    if (!room) return { error: '房间不存在' };
+    if (room.players.some(p => p.id === userId) || room.spectators.some(s => s.id === userId)) return { error: '已在房间中' };
+
+    room.spectators.push({ id: userId, username });
+    this.playerRooms.set(userId, roomId);
+    return { success: true, room };
+  }
+
   leaveRoom(userId) {
     const roomId = this.playerRooms.get(userId);
     if (!roomId) return null;
@@ -55,24 +66,28 @@ class GameManager {
       return null;
     }
 
+    const wasPlayer = room.players.some(p => p.id === userId);
     room.players = room.players.filter(p => p.id !== userId);
+    room.spectators = room.spectators.filter(s => s.id !== userId);
     this.playerRooms.delete(userId);
 
-    if (room.players.length === 0) {
+    const total = room.players.length + room.spectators.length;
+    if (total === 0) {
       this.rooms.delete(roomId);
       return { roomId, disbanded: true };
     }
 
-    if (room.hostId === userId) {
-      room.hostId = room.players[0].id;
-    }
-
-    if (room.state === 'playing' && room.engine) {
-      const player = room.engine.players.find(p => p.id === userId);
-      if (player) {
-        player.isOut = true;
-        player.hand = [];
-        this.checkGameEnd(room);
+    if (wasPlayer) {
+      if (room.hostId === userId) {
+        room.hostId = room.players.length > 0 ? room.players[0].id : (room.spectators.length > 0 ? room.spectators[0].id : null);
+      }
+      if (room.state === 'playing' && room.engine) {
+        const player = room.engine.players.find(p => p.id === userId);
+        if (player) {
+          player.isOut = true;
+          player.hand = [];
+          this.checkGameEnd(room);
+        }
       }
     }
 
@@ -96,6 +111,7 @@ class GameManager {
         id,
         hostId: room.hostId,
         playerCount: room.players.length,
+        spectatorCount: room.spectators.length,
         players: room.players.map(p => ({ id: p.id, username: p.username })),
         state: room.state,
       });
@@ -123,6 +139,20 @@ class GameManager {
     if (room.engine.state === 'finished') {
       room.state = 'finished';
     }
+  }
+
+  isSpectator(userId) {
+    const roomId = this.playerRooms.get(userId);
+    if (!roomId) return false;
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    return room.spectators.some(s => s.id === userId);
+  }
+
+  getSpectators(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return [];
+    return room.spectators;
   }
 
   getOnlineUsers(excludeUserId) {

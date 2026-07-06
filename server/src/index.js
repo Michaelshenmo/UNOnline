@@ -96,6 +96,23 @@ io.on('connection', (socket) => {
     updateRooms();
   });
 
+  socket.on('join_spectator', ({ roomId }) => {
+    if (!currentUser) return;
+    const existing = manager.getRoomByPlayer(currentUser.id);
+    if (existing) {
+      socket.emit('error', { message: '你已在房间中' });
+      return;
+    }
+    const room = manager.getRoom(roomId);
+    if (!room) { socket.emit('error', { message: '房间不存在' }); return; }
+    const result = manager.joinSpectator(roomId, currentUser.id, currentUser.username);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    socket.join(`room:${roomId}`);
+    socket.emit('spectator_joined', { room: result.room });
+    broadcastToSpectators(room);
+    updateRooms();
+  });
+
   socket.on('leave_room', () => {
     if (!currentUser) return;
     const result = manager.leaveRoom(currentUser.id);
@@ -195,8 +212,10 @@ io.on('connection', (socket) => {
     if (!room) { socket.emit('error', { message: '不在房间中' }); return; }
     socket.join(`room:${room.id}`);
     if (room.engine) {
-      const state = room.engine.getPublicState(currentUser.id);
+      const isSpec = manager.isSpectator(currentUser.id);
+      const state = room.engine.getPublicState(isSpec ? null : currentUser.id);
       socket.emit('game_state', state);
+      if (isSpec) socket.emit('spectator_info', { spectators: manager.getSpectators(room.id) });
     } else {
       socket.emit('room_info', { room });
     }
@@ -222,9 +241,21 @@ io.on('connection', (socket) => {
   });
 
   function broadcastGameState(room) {
+    if (!room.engine) return;
     for (const player of room.engine.players) {
       const state = room.engine.getPublicState(player.id);
       io.to(`user:${player.id}`).emit('game_state', state);
+    }
+    broadcastToSpectators(room);
+  }
+
+  function broadcastToSpectators(room) {
+    if (!room || !room.engine) return;
+    const state = room.engine.getPublicState(null);
+    const specInfo = { spectators: manager.getSpectators(room.id) };
+    for (const s of room.spectators) {
+      io.to(`user:${s.id}`).emit('game_state', state);
+      io.to(`user:${s.id}`).emit('spectator_info', specInfo);
     }
   }
 

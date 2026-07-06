@@ -11,16 +11,18 @@ export default function Lobby() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<{ id: number }[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [adminTab, setAdminTab] = useState<'users' | 'settings'>('users');
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [editSettings, setEditSettings] = useState<Record<string, string>>({ allow_registration: 'true' });
   const [error, setError] = useState('');
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createError, setCreateError] = useState('');
-  const [showPwdDialog, setShowPwdDialog] = useState(false);
-  const [pwdError, setPwdError] = useState('');
-  const [pwdSuccess, setPwdSuccess] = useState('');
-  const [adminPwdTarget, setAdminPwdTarget] = useState<{ id: number; username: string } | null>(null);
+  const [showProfileCenter, setShowProfileCenter] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [adminEditTarget, setAdminEditTarget] = useState<any | null>(null);
+  const [adminEditError, setAdminEditError] = useState('');
   const regSwitchRef = useRef<any>(null);
 
   const cuUsernameRef = useRef<any>(null);
@@ -30,13 +32,18 @@ export default function Lobby() {
   const maxPlayersRef = useRef<any>(null);
   const turnTimeoutRef = useRef<any>(null);
   const unoPenaltyRef = useRef<any>(null);
-  const pwdOldRef = useRef<any>(null);
-  const pwdNewRef = useRef<any>(null);
-  const pwdConfirmRef = useRef<any>(null);
-  const adminPwdNewRef = useRef<any>(null);
-  const adminPwdConfirmRef = useRef<any>(null);
-  const pwdDialogRef = useRef<any>(null);
-  const adminPwdDialogRef = useRef<any>(null);
+  const createUserDialogRef = useRef<any>(null);
+  const profileNicknameRef = useRef<any>(null);
+  const profilePwdOldRef = useRef<any>(null);
+  const profilePwdNewRef = useRef<any>(null);
+  const profilePwdConfirmRef = useRef<any>(null);
+  const adminEditUsernameRef = useRef<any>(null);
+  const adminEditNicknameRef = useRef<any>(null);
+  const adminEditRoleRef = useRef<any>(null);
+  const adminEditPwdRef = useRef<any>(null);
+  const adminEditPwdConfirmRef = useRef<any>(null);
+  const profileDialogRef = useRef<any>(null);
+  const adminEditDialogRef = useRef<any>(null);
 
   useEffect(() => {
     const s = getSocket();
@@ -50,6 +57,9 @@ export default function Lobby() {
       navigate(`/game/${room.id}`);
     });
     s.on('room_joined', ({ room }: { room: Room & { id: string } }) => {
+      navigate(`/game/${room.id}`);
+    });
+    s.on('spectator_joined', ({ room }: { room: Room & { id: string } }) => {
       navigate(`/game/${room.id}`);
     });
     s.on('error', ({ message }: { message: string }) => setError(message));
@@ -79,31 +89,46 @@ export default function Lobby() {
   }, [editSettings.allow_registration]);
 
   useEffect(() => {
-    const el = pwdDialogRef.current;
+    const el = createUserDialogRef.current;
     if (!el) return;
-    if (showPwdDialog) el.showModal();
+    if (showCreateUser) el.showModal();
     else el.close();
-  }, [showPwdDialog]);
+  }, [showCreateUser]);
 
   useEffect(() => {
-    const el = adminPwdDialogRef.current;
+    const el = createUserDialogRef.current;
     if (!el) return;
-    if (adminPwdTarget) el.showModal();
-    else el.close();
-  }, [adminPwdTarget]);
-
-  useEffect(() => {
-    const el = pwdDialogRef.current;
-    if (!el) return;
-    const handler = () => setShowPwdDialog(false);
+    const handler = () => setShowCreateUser(false);
     el.addEventListener('close', handler);
     return () => el.removeEventListener('close', handler);
   }, []);
 
   useEffect(() => {
-    const el = adminPwdDialogRef.current;
+    const el = profileDialogRef.current;
     if (!el) return;
-    const handler = () => setAdminPwdTarget(null);
+    if (showProfileCenter) { el.showModal(); setProfileError(''); setProfileSuccess(''); }
+    else el.close();
+  }, [showProfileCenter]);
+
+  useEffect(() => {
+    const el = profileDialogRef.current;
+    if (!el) return;
+    const handler = () => setShowProfileCenter(false);
+    el.addEventListener('close', handler);
+    return () => el.removeEventListener('close', handler);
+  }, []);
+
+  useEffect(() => {
+    const el = adminEditDialogRef.current;
+    if (!el) return;
+    if (adminEditTarget) el.showModal();
+    else el.close();
+  }, [adminEditTarget]);
+
+  useEffect(() => {
+    const el = adminEditDialogRef.current;
+    if (!el) return;
+    const handler = () => setAdminEditTarget(null);
     el.addEventListener('close', handler);
     return () => el.removeEventListener('close', handler);
   }, []);
@@ -122,6 +147,10 @@ export default function Lobby() {
 
   function joinRoom(roomId: string) {
     getSocket().emit('join_room', { roomId });
+  }
+
+  function joinSpectator(roomId: string) {
+    getSocket().emit('join_spectator', { roomId });
   }
 
   async function loadAdminData() {
@@ -166,6 +195,44 @@ export default function Lobby() {
     }
   }
 
+  async function handleUpdateProfile() {
+    setProfileError(''); setProfileSuccess('');
+    const nickname = profileNicknameRef.current?.value?.trim();
+    const oldPwd = profilePwdOldRef.current?.value;
+    const newPwd = profilePwdNewRef.current?.value;
+    const confirmPwd = profilePwdConfirmRef.current?.value;
+    try {
+      if (nickname) await api.updateProfile(nickname);
+      if (oldPwd && newPwd) {
+        if (newPwd.length < 6) { setProfileError('新密码至少6个字符'); return; }
+        if (newPwd !== confirmPwd) { setProfileError('两次密码不一致'); return; }
+        await api.changePassword(oldPwd, newPwd);
+      }
+      setProfileSuccess('资料已更新');
+      setTimeout(() => { setShowProfileCenter(false); setProfileSuccess(''); }, 1500);
+    } catch (err: any) { setProfileError(err.message); }
+  }
+
+  async function handleAdminEditUser() {
+    if (!adminEditTarget) return;
+    setAdminEditError('');
+    const newUsername = adminEditUsernameRef.current?.value?.trim();
+    const newNickname = adminEditNicknameRef.current?.value?.trim();
+    const newRole = adminEditRoleRef.current?.value;
+    const newPwd = adminEditPwdRef.current?.value;
+    const confirmPwd = adminEditPwdConfirmRef.current?.value;
+    try {
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, role: newRole });
+      if (newPwd) {
+        if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
+        if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
+        await api.adminResetPassword(adminEditTarget.id, newPwd);
+      }
+      setAdminEditTarget(null);
+      loadAdminData();
+    } catch (err: any) { setAdminEditError(err.message); }
+  }
+
   async function handleCreateUser() {
     setCreateError('');
     const username = cuUsernameRef.current?.value?.trim();
@@ -182,36 +249,6 @@ export default function Lobby() {
     }
   }
 
-  async function handleChangePassword() {
-    setPwdError(''); setPwdSuccess('');
-    const oldPwd = pwdOldRef.current?.value;
-    const newPwd = pwdNewRef.current?.value;
-    const confirmPwd = pwdConfirmRef.current?.value;
-    if (!oldPwd || !newPwd) { setPwdError('请填写所有字段'); return; }
-    if (newPwd.length < 6) { setPwdError('新密码至少6个字符'); return; }
-    if (newPwd !== confirmPwd) { setPwdError('两次密码不一致'); return; }
-    try {
-      await api.changePassword(oldPwd, newPwd);
-      setPwdSuccess('密码修改成功');
-      setTimeout(() => { setShowPwdDialog(false); setPwdSuccess(''); }, 1500);
-    } catch (err: any) { setPwdError(err.message); }
-  }
-
-  async function handleAdminResetPassword() {
-    if (!adminPwdTarget) return;
-    setPwdError(''); setPwdSuccess('');
-    const newPwd = adminPwdNewRef.current?.value;
-    const confirmPwd = adminPwdConfirmRef.current?.value;
-    if (!newPwd) { setPwdError('请填写新密码'); return; }
-    if (newPwd.length < 6) { setPwdError('新密码至少6个字符'); return; }
-    if (newPwd !== confirmPwd) { setPwdError('两次密码不一致'); return; }
-    try {
-      await api.adminResetPassword(adminPwdTarget.id, newPwd);
-      setPwdSuccess(`已重置用户 ${adminPwdTarget.username} 的密码`);
-      setTimeout(() => { setAdminPwdTarget(null); setPwdSuccess(''); }, 1500);
-    } catch (err: any) { setPwdError(err.message); }
-  }
-
   const currentRoom = rooms.find(r => r.players.some(p => p.id === user?.id));
 
   return (
@@ -225,7 +262,7 @@ export default function Lobby() {
               {showAdmin ? '关闭管理' : '管理面板'}
             </md-outlined-button>
           )}
-          <md-outlined-button style={{ minWidth: 100 }} onClick={() => { setShowPwdDialog(true); setPwdError(''); setPwdSuccess(''); }}>修改密码</md-outlined-button>
+          <md-outlined-button style={{ minWidth: 100 }} onClick={() => setShowProfileCenter(true)}>个人中心</md-outlined-button>
           <md-outlined-button style={{ minWidth: 80 }} onClick={logout}>退出</md-outlined-button>
         </div>
       </div>
@@ -233,89 +270,93 @@ export default function Lobby() {
       {error && <div style={{ background: '#c62828', color: '#fff', padding: '10px 16px', borderRadius: 10, marginBottom: 12, fontSize: 13 }}>{error}</div>}
 
       {showAdmin && isAdmin ? (
-        <div className="admin-panel section-card">
-          <div className="admin-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 className="section-title" style={{ margin: 0 }}><md-icon>manage_accounts</md-icon> 用户管理</h3>
-              <md-filled-button style={{ minWidth: 120 }} onClick={() => { setShowCreateUser(true); setCreateError(''); }}>
-                <md-icon slot="icon">person_add</md-icon>
-                创建用户
-              </md-filled-button>
-            </div>
-            <table>
-              <thead>
-                <tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>注册时间</th><th>操作</th></tr>
-              </thead>
-              <tbody>
-                {adminUsers.map(u => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.username}</td>
-                    <td>{u.nickname}</td>
-                    <td>
-                      <select value={u.role} onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                        style={{ background: '#1e1e3a', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px', fontSize: 13 }}>
-                        <option value="player">玩家</option>
-                        <option value="admin">管理员</option>
-                      </select>
-                    </td>
-                    <td>{new Date(u.created_at).toLocaleDateString()}</td>
-                    <td className="actions">
-                      <md-text-button onClick={() => { setAdminPwdTarget({ id: u.id, username: u.username }); setPwdError(''); setPwdSuccess(''); }}>重置密码</md-text-button>
-                      <md-text-button onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="admin-panel" style={{ display: 'flex', gap: 20 }}>
+          <md-list style={{ width: 200, flexShrink: 0, background: 'var(--md-sys-color-surface)', borderRadius: 16, padding: 8, boxShadow: 'var(--md-elevation-level1)', height: 'fit-content' } as any}>
+            <md-list-item type="button" onClick={() => setAdminTab('users')}>
+              <md-icon slot="start" style={{ color: adminTab === 'users' ? '#e53935' : '#aaa' }}>manage_accounts</md-icon>
+              <div slot="headline" style={{ color: adminTab === 'users' ? '#e53935' : '#ccc', fontWeight: adminTab === 'users' ? 500 : 400 }}>用户管理</div>
+            </md-list-item>
+            <md-list-item type="button" onClick={() => setAdminTab('settings')}>
+              <md-icon slot="start" style={{ color: adminTab === 'settings' ? '#e53935' : '#aaa' }}>settings</md-icon>
+              <div slot="headline" style={{ color: adminTab === 'settings' ? '#e53935' : '#ccc', fontWeight: adminTab === 'settings' ? 500 : 400 }}>系统设置</div>
+            </md-list-item>
+          </md-list>
 
-          {showCreateUser && (
-            <div className="create-user-form">
-              <h3 className="section-title"><md-icon>person_add</md-icon> 创建新用户</h3>
-              <div className="form-row">
-                <md-outlined-text-field ref={cuUsernameRef} label="用户名" type="text" required></md-outlined-text-field>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {adminTab === 'users' ? (
+              <div className="section-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 className="section-title" style={{ margin: 0 }}><md-icon>manage_accounts</md-icon> 用户管理</h3>
+                  <md-filled-button style={{ minWidth: 120 }} onClick={() => {
+                    setShowCreateUser(true); setCreateError('');
+                    if (cuUsernameRef.current) cuUsernameRef.current.value = '';
+                    if (cuPasswordRef.current) cuPasswordRef.current.value = '';
+                    if (cuNicknameRef.current) cuNicknameRef.current.value = '';
+                    if (cuRoleRef.current) cuRoleRef.current.value = 'player';
+                  }}>
+                    <md-icon slot="icon">person_add</md-icon>
+                    创建用户
+                  </md-filled-button>
+                </div>
+                <table>
+                  <thead>
+                    <tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>注册时间</th><th>操作</th></tr>
+                  </thead>
+                  <tbody>
+                    {adminUsers.map(u => (
+                      <tr key={u.id}>
+                        <td>{u.id}</td>
+                        <td>{u.username}</td>
+                        <td>{u.nickname}</td>
+                        <td>
+                          <select value={u.role} onChange={(e) => handleRoleChange(u.id, e.target.value)} disabled={u.id === user?.id}
+                            style={{ background: '#1e1e3a', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px', fontSize: 13, opacity: u.id === user?.id ? 0.5 : 1 }}>
+                            <option value="player">玩家</option>
+                            <option value="admin">管理员</option>
+                          </select>
+                        </td>
+                        <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                        <td className="actions">
+                          <md-text-button onClick={() => {
+                            setAdminEditTarget(u); setAdminEditError('');
+                            setTimeout(() => {
+                              if (adminEditUsernameRef.current) adminEditUsernameRef.current.value = u.username;
+                              if (adminEditNicknameRef.current) adminEditNicknameRef.current.value = u.nickname || u.username;
+                              if (adminEditRoleRef.current) adminEditRoleRef.current.value = u.role;
+                              if (adminEditPwdRef.current) adminEditPwdRef.current.value = '';
+                              if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
+                            }, 50);
+                          }}>修改信息</md-text-button>
+                          <md-text-button onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="form-row">
-                <md-outlined-text-field ref={cuPasswordRef} label="密码" type="password" required></md-outlined-text-field>
+            ) : (
+              <div className="section-card">
+                <h3 className="section-title"><md-icon>settings</md-icon> 系统设置</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 400 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={toggleReg}>
+                    <span style={{ fontSize: 14, color: '#ccc' }}>允许注册</span>
+                    <md-switch ref={regSwitchRef} selected={editSettings.allow_registration === 'true' || undefined}></md-switch>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={maxPlayersRef} label="最大玩家数 (2-10)" type="number" value={editSettings.max_players || '4'}></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={turnTimeoutRef} label="回合超时 (秒)" type="number" value={editSettings.turn_timeout || '30'}></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={unoPenaltyRef} label="未喊UNO罚牌数" type="number" value={editSettings.uno_penalty || '2'}></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-filled-button style={{ minWidth: 200 }} onClick={handleSaveSettings}>保存设置</md-filled-button>
+                  </div>
+                </div>
               </div>
-              <div className="form-row">
-                <md-outlined-text-field ref={cuNicknameRef} label="昵称" type="text"></md-outlined-text-field>
-              </div>
-              <div className="form-row">
-                <md-outlined-select ref={cuRoleRef} value="player">
-                  <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
-                  <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>
-                </md-outlined-select>
-              </div>
-              {createError && <div className="form-error">{createError}</div>}
-              <div className="form-actions">
-                <md-filled-button style={{ minWidth: 100 }} onClick={handleCreateUser}>创建</md-filled-button>
-                <md-outlined-button style={{ minWidth: 100 }} onClick={() => setShowCreateUser(false)}>取消</md-outlined-button>
-              </div>
-            </div>
-          )}
-
-          <div className="admin-section">
-            <h3 className="section-title"><md-icon>settings</md-icon> 系统设置</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 400 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={toggleReg}>
-                <span style={{ fontSize: 14, color: '#ccc' }}>允许注册</span>
-                <md-switch ref={regSwitchRef} selected={editSettings.allow_registration === 'true' || undefined}></md-switch>
-              </div>
-              <div>
-                <md-outlined-text-field ref={maxPlayersRef} label="最大玩家数 (2-10)" type="number" value={editSettings.max_players || '4'}></md-outlined-text-field>
-              </div>
-              <div>
-                <md-outlined-text-field ref={turnTimeoutRef} label="回合超时 (秒)" type="number" value={editSettings.turn_timeout || '30'}></md-outlined-text-field>
-              </div>
-              <div>
-                <md-outlined-text-field ref={unoPenaltyRef} label="未喊UNO罚牌数" type="number" value={editSettings.uno_penalty || '2'}></md-outlined-text-field>
-              </div>
-              <div>
-                <md-filled-button style={{ minWidth: 200 }} onClick={handleSaveSettings}>保存设置</md-filled-button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       ) : (
@@ -342,14 +383,17 @@ export default function Lobby() {
                         <div className="room-info">
                           <span className="room-name">房间 #{room.id}</span>
                           <span className="room-meta">
-                            {room.playerCount} 人 | {room.state === 'waiting' ? '等待中' : '游戏中'}
+                            {room.playerCount} 人{room.spectatorCount ? ` · ${room.spectatorCount}观战` : ''} | {room.state === 'waiting' ? '等待中' : '游戏中'}
                           </span>
                         </div>
-                        {room.state === 'waiting' ? (
-                          <md-filled-button style={{ minWidth: 100 }} onClick={() => joinRoom(room.id)}>加入</md-filled-button>
-                        ) : (
-                          <span style={{ fontSize: 12, color: '#aaa' }}>进行中</span>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {room.state === 'waiting' ? (
+                            <md-filled-button style={{ minWidth: 100 }} onClick={() => joinRoom(room.id)}>加入</md-filled-button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#aaa' }}>进行中</span>
+                          )}
+                          <md-outlined-button style={{ minWidth: 100 }} onClick={() => joinSpectator(room.id)}>观战</md-outlined-button>
+                        </div>
                       </div>
                     ))
                   )}
@@ -375,41 +419,73 @@ export default function Lobby() {
         </div>
       )}
 
-      {/* Player self password change dialog */}
-      <dialog ref={pwdDialogRef} className="md-dialog-custom">
-        <div className="md-dialog-headline">修改密码</div>
-        {pwdSuccess ? (
-          <div className="md-dialog-content" style={{ color: '#43a047', fontSize: 15, textAlign: 'center' }}>{pwdSuccess}</div>
+      {/* Profile center dialog */}
+      <dialog ref={profileDialogRef} className="md-dialog-custom" style={{ minWidth: 420 }}>
+        <div className="md-dialog-headline">个人中心</div>
+        {profileSuccess ? (
+          <div className="md-dialog-content" style={{ color: '#43a047', fontSize: 15, textAlign: 'center' }}>{profileSuccess}</div>
         ) : (
           <div className="md-dialog-content">
-            <md-outlined-text-field ref={pwdOldRef} label="原密码" type="password" required></md-outlined-text-field>
-            <md-outlined-text-field ref={pwdNewRef} label="新密码" type="password" required></md-outlined-text-field>
-            <md-outlined-text-field ref={pwdConfirmRef} label="确认新密码" type="password" required></md-outlined-text-field>
-            {pwdError && <div className="form-error">{pwdError}</div>}
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <div style={{ fontSize: 13, color: '#aaa' }}>UID: {user?.id}</div>
+              <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>用户名: {user?.username}</div>
+            </div>
+            <md-outlined-text-field ref={profileNicknameRef} label="昵称" type="text" value={user?.nickname || user?.username}></md-outlined-text-field>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginTop: 4 }}>
+              <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>修改密码（选填）</p>
+              <md-outlined-text-field ref={profilePwdOldRef} label="原密码" type="password" style={{ marginBottom: 12 }}></md-outlined-text-field>
+              <md-outlined-text-field ref={profilePwdNewRef} label="新密码" type="password" style={{ marginBottom: 12 }}></md-outlined-text-field>
+              <md-outlined-text-field ref={profilePwdConfirmRef} label="确认新密码" type="password"></md-outlined-text-field>
+            </div>
+            {profileError && <div className="form-error" style={{ marginTop: 8 }}>{profileError}</div>}
           </div>
         )}
         <div className="md-dialog-actions">
-          {!pwdSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => pwdDialogRef.current.close()}>取消</md-outlined-button>}
-          {!pwdSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleChangePassword}>确认修改</md-filled-button>}
+          {!profileSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => profileDialogRef.current.close()}>关闭</md-outlined-button>}
+          {!profileSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleUpdateProfile}>保存</md-filled-button>}
         </div>
       </dialog>
 
-      {/* Admin password reset dialog */}
-      <dialog ref={adminPwdDialogRef} className="md-dialog-custom">
-        <div className="md-dialog-headline">重置密码</div>
-        {pwdSuccess ? (
-          <div className="md-dialog-content" style={{ color: '#43a047', fontSize: 15, textAlign: 'center' }}>{pwdSuccess}</div>
-        ) : (
-          <div className="md-dialog-content">
-            <p style={{ color: '#aaa', fontSize: 13, marginBottom: 8 }}>用户: {adminPwdTarget?.username}</p>
-            <md-outlined-text-field ref={adminPwdNewRef} label="新密码" type="password" required></md-outlined-text-field>
-            <md-outlined-text-field ref={adminPwdConfirmRef} label="确认新密码" type="password" required></md-outlined-text-field>
-            {pwdError && <div className="form-error">{pwdError}</div>}
+      {/* Admin edit user dialog */}
+      <dialog ref={adminEditDialogRef} className="md-dialog-custom" style={{ minWidth: 420 }}>
+        <div className="md-dialog-headline">修改用户信息</div>
+        <div className="md-dialog-content">
+          <p style={{ color: '#aaa', fontSize: 13, marginBottom: 8 }}>UID: {adminEditTarget?.id}</p>
+          <md-outlined-text-field ref={adminEditUsernameRef} label="用户名" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+          <md-outlined-text-field ref={adminEditNicknameRef} label="昵称" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+          <md-outlined-select ref={adminEditRoleRef} value={adminEditTarget?.role || 'player'} style={{ marginBottom: 12 }} disabled={adminEditTarget?.id === user?.id || undefined}>
+            <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
+            <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>
+          </md-outlined-select>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+            <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>重置密码（选填）</p>
+            <md-outlined-text-field ref={adminEditPwdRef} label="新密码" type="password" style={{ marginBottom: 12 }}></md-outlined-text-field>
+            <md-outlined-text-field ref={adminEditPwdConfirmRef} label="确认新密码" type="password"></md-outlined-text-field>
           </div>
-        )}
+          {adminEditError && <div className="form-error" style={{ marginTop: 8 }}>{adminEditError}</div>}
+        </div>
         <div className="md-dialog-actions">
-          {!pwdSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => adminPwdDialogRef.current.close()}>取消</md-outlined-button>}
-          {!pwdSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleAdminResetPassword}>确认重置</md-filled-button>}
+          <md-outlined-button style={{ minWidth: 100 }} onClick={() => adminEditDialogRef.current.close()}>取消</md-outlined-button>
+          <md-filled-button style={{ minWidth: 100 }} onClick={handleAdminEditUser}>保存</md-filled-button>
+        </div>
+      </dialog>
+
+      {/* Create user dialog */}
+      <dialog ref={createUserDialogRef} className="md-dialog-custom">
+        <div className="md-dialog-headline">创建新用户</div>
+        {createError && <div className="md-dialog-content" style={{ paddingBottom: 0 }}><div className="form-error">{createError}</div></div>}
+        <div className="md-dialog-content">
+          <md-outlined-text-field ref={cuUsernameRef} label="用户名" type="text" required></md-outlined-text-field>
+          <md-outlined-text-field ref={cuPasswordRef} label="密码" type="password" required></md-outlined-text-field>
+          <md-outlined-text-field ref={cuNicknameRef} label="昵称" type="text"></md-outlined-text-field>
+          <md-outlined-select ref={cuRoleRef} value="player">
+            <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
+            <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>
+          </md-outlined-select>
+        </div>
+        <div className="md-dialog-actions">
+          <md-outlined-button style={{ minWidth: 100 }} onClick={() => createUserDialogRef.current.close()}>取消</md-outlined-button>
+          <md-filled-button style={{ minWidth: 100 }} onClick={handleCreateUser}>创建</md-filled-button>
         </div>
       </dialog>
     </div>
