@@ -36,10 +36,10 @@ export default function Login() {
         <p className="subtitle">联机UNO卡牌游戏</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required></md-outlined-text-field>
+            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required></md-outlined-text-field>
+            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div style={{ marginTop: 8 }}>

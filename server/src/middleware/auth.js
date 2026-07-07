@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 const JWT_SECRET = process.env.JWT_SECRET || 'uno-online-secret';
 
 export function generateToken(user) {
-  return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id, username: user.username, nickname: user.nickname, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 export function authenticateToken(req, res, next) {

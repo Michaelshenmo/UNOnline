@@ -3,6 +3,7 @@ export interface User {
   username: string;
   nickname: string;
   role: 'player' | 'admin';
+  status?: 'normal' | 'banned';
 }
 
 export interface Card {
@@ -14,6 +15,8 @@ export interface Card {
 export interface PlayerState {
   id: number;
   username: string;
+  nickname?: string;
+  status?: string;
   cardCount: number;
   calledUno: boolean;
   isOut: boolean;

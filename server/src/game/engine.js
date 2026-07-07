@@ -55,6 +55,7 @@ export class UnoEngine {
     this.players = playerInfos.map((p, i) => ({
       id: p.id,
       username: p.username,
+      status: p.status || 'normal',
       hand: [],
       calledUno: false,
       isOut: false,
@@ -277,6 +278,7 @@ export class UnoEngine {
       players: this.players.map(p => ({
         id: p.id,
         username: p.username,
+        status: p.status,
         cardCount: p.hand.length,
         calledUno: p.calledUno,
         isOut: p.isOut,

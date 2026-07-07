@@ -22,6 +22,7 @@ db.exec(`
     password_hash TEXT NOT NULL,
     nickname TEXT,
     role TEXT DEFAULT 'player',
+    status TEXT DEFAULT 'normal',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -39,6 +40,9 @@ db.exec(`
     FOREIGN KEY (player_id) REFERENCES users(id)
   );
 `);
+
+// Migration: add status column if missing
+try { db.exec('ALTER TABLE users ADD COLUMN status TEXT DEFAULT "normal"'); } catch {}
 
 // Insert default settings
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');

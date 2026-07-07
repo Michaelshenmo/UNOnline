@@ -127,7 +127,7 @@ class GameManager {
     if (room.state !== 'waiting') return { error: '游戏已经开始' };
 
     const engine = new UnoEngine();
-    const playerInfos = room.players.map(p => ({ id: p.id, username: p.username }));
+    const playerInfos = room.players.map(p => ({ id: p.id, username: p.username, status: 'normal' }));
     engine.initialize(playerInfos);
     room.engine = engine;
     room.state = 'playing';

@@ -141,7 +141,7 @@ export default function Game() {
         <div style={{ textAlign: 'left', margin: '16px 0' }}>
           {rankings.map((r, i) => (
             <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #333', fontSize: 15 }}>
-              <strong>第{r.rank}名</strong> - {r.username}
+              <strong>第{r.rank}名</strong> - {r.nickname || r.username}
             </div>
           ))}
         </div>
@@ -184,8 +184,9 @@ export default function Game() {
         {(gameState?.players || players).map((p, i) => (
           <div key={p.id} className={`player-badge ${gameState && i === gameState.currentPlayerIndex ? 'active' : 'inactive'} ${(p as any).isOut ? 'out' : ''}`}>
             <div className="name">
-              {p.username} {p.id === user?.id ? '(你)' : ''}
+              {(p as any).nickname || p.username} {p.id === user?.id ? '(你)' : ''}
               {(p as any).calledUno && (p as any).cardCount === 1 ? <span className="uno-tag">UNO!</span> : ''}
+              {(p as any).status === 'banned' ? <span style={{ background: '#d32f2f', color: '#fff', fontSize: 9, padding: '1px 5px', borderRadius: 3, marginLeft: 4 }}>封禁</span> : ''}
             </div>
             <div className="meta">
               {gameState ? ((p as any).isOut ? '已出局' : `${(p as any).cardCount} 张牌`) : '等待中'}
@@ -214,7 +215,7 @@ export default function Game() {
         <div style={{ position: 'fixed', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'var(--md-sys-color-surface)', borderRadius: 12, padding: 10, boxShadow: 'var(--md-elevation-level2)', zIndex: 50, minWidth: 100 }}>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>观战 ({spectators.length})</div>
           {spectators.map(s => (
-            <div key={s.id} style={{ fontSize: 12, color: '#ccc', padding: '2px 0', textAlign: 'center' }}>{s.username}</div>
+            <div key={s.id} style={{ fontSize: 12, color: '#ccc', padding: '2px 0', textAlign: 'center' }}>{s.nickname || s.username}</div>
           ))}
         </div>
       )}

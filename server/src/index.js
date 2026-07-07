@@ -62,14 +62,23 @@ io.on('connection', (socket) => {
     updateOnlineUsers();
   });
 
+  const displayName = (u) => u.nickname || u.username;
+  const getUserStatus = (u) => {
+    if (!u) return 'normal';
+    const row = db.prepare('SELECT status FROM users WHERE id = ?').get(u.id);
+    return row ? row.status : 'normal';
+  };
+  const isBanned = (u) => getUserStatus(u) === 'banned';
+
   socket.on('create_room', () => {
     if (!currentUser) return;
+    if (isBanned(currentUser)) { socket.emit('error', { message: '账号已被封禁' }); return; }
     const existing = manager.getRoomByPlayer(currentUser.id);
     if (existing) {
       socket.emit('error', { message: '你已在房间中' });
       return;
     }
-    const room = manager.createRoom(currentUser.id, currentUser.username);
+    const room = manager.createRoom(currentUser.id, displayName(currentUser));
     socket.join(`room:${room.id}`);
     socket.emit('room_created', { room });
     updateRooms();
@@ -77,12 +86,13 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', ({ roomId }) => {
     if (!currentUser) return;
+    if (isBanned(currentUser)) { socket.emit('error', { message: '账号已被封禁' }); return; }
     const existing = manager.getRoomByPlayer(currentUser.id);
     if (existing) {
       socket.emit('error', { message: '你已在房间中' });
       return;
     }
-    const result = manager.joinRoom(roomId, currentUser.id, currentUser.username);
+    const result = manager.joinRoom(roomId, currentUser.id, displayName(currentUser));
     if (result.error) {
       socket.emit('error', { message: result.error });
       return;
@@ -90,7 +100,7 @@ io.on('connection', (socket) => {
     socket.join(`room:${roomId}`);
     socket.emit('room_joined', { room: result.room });
     socket.to(`room:${roomId}`).emit('player_joined', {
-      player: { id: currentUser.id, username: currentUser.username },
+      player: { id: currentUser.id, username: displayName(currentUser) },
       room: result.room,
     });
     updateRooms();
@@ -98,6 +108,7 @@ io.on('connection', (socket) => {
 
   socket.on('join_spectator', ({ roomId }) => {
     if (!currentUser) return;
+    if (isBanned(currentUser)) { socket.emit('error', { message: '账号已被封禁' }); return; }
     const existing = manager.getRoomByPlayer(currentUser.id);
     if (existing) {
       socket.emit('error', { message: '你已在房间中' });
@@ -105,11 +116,11 @@ io.on('connection', (socket) => {
     }
     const room = manager.getRoom(roomId);
     if (!room) { socket.emit('error', { message: '房间不存在' }); return; }
-    const result = manager.joinSpectator(roomId, currentUser.id, currentUser.username);
+    const result = manager.joinSpectator(roomId, currentUser.id, displayName(currentUser));
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     socket.join(`room:${roomId}`);
     socket.emit('spectator_joined', { room: result.room });
-    broadcastToSpectators(room);
+    broadcastRoomState(room);
     updateRooms();
   });
 
@@ -211,11 +222,11 @@ io.on('connection', (socket) => {
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room) { socket.emit('error', { message: '不在房间中' }); return; }
     socket.join(`room:${room.id}`);
+    socket.emit('spectator_info', { spectators: manager.getSpectators(room.id) });
     if (room.engine) {
       const isSpec = manager.isSpectator(currentUser.id);
       const state = room.engine.getPublicState(isSpec ? null : currentUser.id);
       socket.emit('game_state', state);
-      if (isSpec) socket.emit('spectator_info', { spectators: manager.getSpectators(room.id) });
     } else {
       socket.emit('room_info', { room });
     }
@@ -246,16 +257,20 @@ io.on('connection', (socket) => {
       const state = room.engine.getPublicState(player.id);
       io.to(`user:${player.id}`).emit('game_state', state);
     }
-    broadcastToSpectators(room);
+    broadcastRoomState(room);
   }
 
-  function broadcastToSpectators(room) {
-    if (!room || !room.engine) return;
-    const state = room.engine.getPublicState(null);
+  function broadcastRoomState(room) {
     const specInfo = { spectators: manager.getSpectators(room.id) };
-    for (const s of room.spectators) {
-      io.to(`user:${s.id}`).emit('game_state', state);
-      io.to(`user:${s.id}`).emit('spectator_info', specInfo);
+    const all = [...room.players, ...room.spectators];
+    for (const p of all) {
+      io.to(`user:${p.id}`).emit('spectator_info', specInfo);
+    }
+    if (room.engine) {
+      const state = room.engine.getPublicState(null);
+      for (const s of room.spectators) {
+        io.to(`user:${s.id}`).emit('game_state', state);
+      }
     }
   }
 

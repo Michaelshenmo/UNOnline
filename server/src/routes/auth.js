@@ -31,10 +31,10 @@ router.post('/register', (req, res) => {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   const role = userCount === 0 ? 'admin' : 'player';
   const result = db.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run(username, hash, nickname || username, role);
-  const user = { id: result.lastInsertRowid, username, role };
+  const user = { id: result.lastInsertRowid, username, nickname: nickname || username, role };
   const token = generateToken(user);
 
-  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role } });
+  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role, status: 'normal' } });
 });
 
 router.post('/login', (req, res) => {
@@ -49,11 +49,11 @@ router.post('/login', (req, res) => {
   }
 
   const token = generateToken(user);
-  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role } });
+  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status } });
 });
 
 router.get('/profile', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
   res.json(user);
 });
@@ -69,6 +69,7 @@ router.put('/password', authenticateToken, (req, res) => {
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
+  if (user.status === 'banned') return res.status(403).json({ error: '账号已被封禁' });
 
   if (!bcrypt.compareSync(old_password, user.password_hash)) {
     return res.status(403).json({ error: '原密码错误' });
@@ -81,8 +82,9 @@ router.put('/password', authenticateToken, (req, res) => {
 
 router.put('/profile', authenticateToken, (req, res) => {
   const { nickname } = req.body;
-  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
+  if (user.status === 'banned') return res.status(403).json({ error: '账号已被封禁' });
 
   db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(nickname || req.user.username, req.user.id);
   res.json({ message: '资料已更新' });

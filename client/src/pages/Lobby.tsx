@@ -40,6 +40,7 @@ export default function Lobby() {
   const adminEditUsernameRef = useRef<any>(null);
   const adminEditNicknameRef = useRef<any>(null);
   const adminEditRoleRef = useRef<any>(null);
+  const adminEditStatusRef = useRef<any>(null);
   const adminEditPwdRef = useRef<any>(null);
   const adminEditPwdConfirmRef = useRef<any>(null);
   const profileDialogRef = useRef<any>(null);
@@ -219,10 +220,11 @@ export default function Lobby() {
     const newUsername = adminEditUsernameRef.current?.value?.trim();
     const newNickname = adminEditNicknameRef.current?.value?.trim();
     const newRole = adminEditRoleRef.current?.value;
+    const newStatus = adminEditStatusRef.current?.value;
     const newPwd = adminEditPwdRef.current?.value;
     const confirmPwd = adminEditPwdConfirmRef.current?.value;
     try {
-      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, role: newRole });
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, role: newRole, status: newStatus });
       if (newPwd) {
         if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
@@ -271,7 +273,7 @@ export default function Lobby() {
 
       {showAdmin && isAdmin ? (
         <div className="admin-panel" style={{ display: 'flex', gap: 20 }}>
-          <md-list style={{ width: 200, flexShrink: 0, background: 'var(--md-sys-color-surface)', borderRadius: 16, padding: 8, boxShadow: 'var(--md-elevation-level1)', height: 'fit-content' } as any}>
+          <md-list style={{ width: 200, flexShrink: 0, '--md-list-container-color': 'var(--md-sys-color-surface)', borderRadius: 16, padding: 8, boxShadow: 'var(--md-elevation-level1)', height: 'fit-content' } as any}>
             <md-list-item type="button" onClick={() => setAdminTab('users')}>
               <md-icon slot="start" style={{ color: adminTab === 'users' ? '#e53935' : '#aaa' }}>manage_accounts</md-icon>
               <div slot="headline" style={{ color: adminTab === 'users' ? '#e53935' : '#ccc', fontWeight: adminTab === 'users' ? 500 : 400 }}>用户管理</div>
@@ -306,8 +308,8 @@ export default function Lobby() {
                     {adminUsers.map(u => (
                       <tr key={u.id}>
                         <td>{u.id}</td>
-                        <td>{u.username}</td>
-                        <td>{u.nickname}</td>
+                    <td>{u.username} {u.status === 'banned' ? <span style={{ background: '#d32f2f', color: '#fff', fontSize: 10, padding: '1px 6px', borderRadius: 4, marginLeft: 4 }}>被封禁</span> : ''}</td>
+                    <td>{u.nickname}</td>
                         <td>
                           <select value={u.role} onChange={(e) => handleRoleChange(u.id, e.target.value)} disabled={u.id === user?.id}
                             style={{ background: '#1e1e3a', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px', fontSize: 13, opacity: u.id === user?.id ? 0.5 : 1 }}>
@@ -323,6 +325,7 @@ export default function Lobby() {
                               if (adminEditUsernameRef.current) adminEditUsernameRef.current.value = u.username;
                               if (adminEditNicknameRef.current) adminEditNicknameRef.current.value = u.nickname || u.username;
                               if (adminEditRoleRef.current) adminEditRoleRef.current.value = u.role;
+                              if (adminEditStatusRef.current) adminEditStatusRef.current.value = u.status || 'normal';
                               if (adminEditPwdRef.current) adminEditPwdRef.current.value = '';
                               if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
                             }, 50);
@@ -456,6 +459,10 @@ export default function Lobby() {
           <md-outlined-select ref={adminEditRoleRef} value={adminEditTarget?.role || 'player'} style={{ marginBottom: 12 }} disabled={adminEditTarget?.id === user?.id || undefined}>
             <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
             <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>
+          </md-outlined-select>
+          <md-outlined-select ref={adminEditStatusRef} value={adminEditTarget?.status || 'normal'} style={{ marginBottom: 12 }} disabled={adminEditTarget?.id === user?.id || undefined}>
+            <md-select-option value="normal"><div slot="headline">正常</div></md-select-option>
+            <md-select-option value="banned"><div slot="headline">被封禁</div></md-select-option>
           </md-outlined-select>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
             <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>重置密码（选填）</p>

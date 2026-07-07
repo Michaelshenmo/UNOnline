@@ -6,7 +6,7 @@ import { authenticateToken, requireAdmin, generateToken } from '../middleware/au
 const router = Router();
 
 router.get('/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, nickname, role, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, nickname, role, status, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -90,20 +90,30 @@ router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) =>
 });
 
 router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
-  const { username, nickname, role } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  const { username, nickname, role, status } = req.body;
+  const targetId = parseInt(req.params.id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId);
   if (!user) return res.status(404).json({ error: '用户不存在' });
 
   if (username && username !== user.username) {
     if (username.length < 3 || username.length > 20) return res.status(400).json({ error: '用户名长度3-20个字符' });
-    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id);
+    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, targetId);
     if (existing) return res.status(400).json({ error: '用户名已存在' });
+  }
+
+  // Admin cannot change own status or role
+  if (targetId === req.user.id) {
+    const newUsername = username || user.username;
+    const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
+    db.prepare('UPDATE users SET username = ?, nickname = ? WHERE id = ?').run(newUsername, newNickname, targetId);
+    return res.json({ message: '用户资料已更新' });
   }
 
   const newUsername = username || user.username;
   const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
   const newRole = role || user.role;
-  db.prepare('UPDATE users SET username = ?, nickname = ?, role = ? WHERE id = ?').run(newUsername, newNickname, newRole, req.params.id);
+  const newStatus = status || user.status;
+  db.prepare('UPDATE users SET username = ?, nickname = ?, role = ?, status = ? WHERE id = ?').run(newUsername, newNickname, newRole, newStatus, targetId);
   res.json({ message: '用户资料已更新' });
 });
 
