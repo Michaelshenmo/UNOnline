@@ -33,7 +33,10 @@ app.get('/api/online-users', (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   const user = token ? verifyToken(token) : null;
-  const users = manager.getOnlineUsers(user?.id);
+  const onlineIds = manager.getOnlineUsers(user?.id).map(u => u.id);
+  const users = onlineIds.length > 0
+    ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${onlineIds.join(',')})`).all()
+    : [];
   res.json(users);
 });
 
@@ -140,6 +143,57 @@ io.on('connection', (socket) => {
         broadcastGameState(result.room);
       }
     }
+    updateRooms();
+  });
+
+  socket.on('kick_player', ({ targetId }) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    if (currentUser.id === targetId) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room) return;
+    const isPlaying = room.engine && room.players.some(p => p.id === targetId);
+    const result = manager.leaveRoom(targetId);
+    if (result && !result.disbanded) {
+      io.to(`user:${targetId}`).emit('kicked', { reason: '你已被管理员踢出游戏' });
+      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
+      if (result.room.state === 'playing') broadcastGameState(result.room);
+    }
+    updateRooms();
+  });
+
+  socket.on('ban_player', ({ targetId }) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    if (currentUser.id === targetId) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room) return;
+    db.prepare("UPDATE users SET status = 'banned' WHERE id = ?").run(targetId);
+    const result = manager.leaveRoom(targetId);
+    if (result && !result.disbanded) {
+      io.to(`user:${targetId}`).emit('banned', { reason: '你已被管理员封禁' });
+      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
+      if (result.room.state === 'playing') broadcastGameState(result.room);
+    }
+    updateRooms();
+  });
+
+  socket.on('convert_to_spectator', ({ targetId }) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    if (currentUser.id === targetId) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine) return;
+    const player = room.engine.players.find(p => p.id === targetId);
+    if (!player || player.isOut) return;
+    player.isOut = true;
+    player.hand = [];
+    room.players = room.players.filter(p => p.id !== targetId);
+    room.spectators.push({ id: targetId, username: player.username });
+    manager.playerRooms.set(targetId, room.id);
+    if (room.engine.currentPlayerIndex === room.engine.players.indexOf(player)) {
+      room.engine.currentPlayerIndex = room.engine.nextPlayerIndex();
+    }
+    io.to(`user:${targetId}`).emit('converted_to_spectator', { reason: '你已被管理员转为观战者' });
+    broadcastGameState(room);
+    broadcastRoomState(room);
     updateRooms();
   });
 
@@ -275,10 +329,13 @@ io.on('connection', (socket) => {
   }
 
   function updateOnlineUsers() {
-    const users = [];
+    const ids = [];
     for (const [uid, sid] of userSocketMap) {
-      users.push({ id: uid });
+      ids.push(uid);
     }
+    const users = ids.length > 0
+      ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${ids.join(',')})`).all()
+      : [];
     io.emit('online_users', users);
   }
 

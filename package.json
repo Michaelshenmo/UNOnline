@@ -1,22 +1,9 @@
 {
-  "name": "unonline-server",
-  "version": "1.0.0",
-  "description": "UNO Online Game Server",
-  "main": "src/index.js",
-  "type": "module",
+  "name": "unonline",
+  "private": true,
   "scripts": {
-    "start": "cd server && node src/index.js",
-    "dev": "cd server && node --watch src/index.js"
-  },
-  "dependencies": {
-    "@material/web": "^2.4.1",
-    "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.7.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
-    "socket.io": "^4.8.1",
-    "uuid": "^11.1.0"
+    "dev": "npm run dev --prefix server",
+    "start": "npm start --prefix server",
+    "build": "npm run build --prefix client"
   }
 }

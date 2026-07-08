@@ -9,7 +9,7 @@ export default function Lobby() {
   const { user, logout, isAdmin, token } = useAuth();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<{ id: number }[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<{ id: number; nickname?: string }[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminTab, setAdminTab] = useState<'users' | 'settings'>('users');
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
@@ -251,6 +251,7 @@ export default function Lobby() {
     }
   }
 
+  const isBanned = user?.status === 'banned';
   const currentRoom = rooms.find(r => r.players.some(p => p.id === user?.id));
 
   return (
@@ -269,6 +270,7 @@ export default function Lobby() {
         </div>
       </div>
 
+      {isBanned && <div style={{ background: '#b71c1c', color: '#fff', padding: '10px 16px', borderRadius: 10, marginBottom: 12, fontSize: 13, textAlign: 'center' }}>你的账号已被封禁，无法创建、加入或观战游戏</div>}
       {error && <div style={{ background: '#c62828', color: '#fff', padding: '10px 16px', borderRadius: 10, marginBottom: 12, fontSize: 13 }}>{error}</div>}
 
       {showAdmin && isAdmin ? (
@@ -373,7 +375,7 @@ export default function Lobby() {
               </div>
             ) : (
               <>
-                <md-filled-button onClick={createRoom} style={{ width: '100%', marginBottom: 12 }}>
+                <md-filled-button onClick={createRoom} style={{ width: '100%', marginBottom: 12 }} disabled={isBanned || undefined}>
                   <md-icon slot="icon">add</md-icon>
                   创建房间
                 </md-filled-button>
@@ -391,11 +393,11 @@ export default function Lobby() {
                         </div>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           {room.state === 'waiting' ? (
-                            <md-filled-button style={{ minWidth: 100 }} onClick={() => joinRoom(room.id)}>加入</md-filled-button>
+                            <md-filled-button style={{ minWidth: 100 }} onClick={() => joinRoom(room.id)} disabled={isBanned || undefined}>加入</md-filled-button>
                           ) : (
                             <span style={{ fontSize: 12, color: '#aaa' }}>进行中</span>
                           )}
-                          <md-outlined-button style={{ minWidth: 100 }} onClick={() => joinSpectator(room.id)}>观战</md-outlined-button>
+                          <md-outlined-button style={{ minWidth: 100 }} onClick={() => joinSpectator(room.id)} disabled={isBanned || undefined}>观战</md-outlined-button>
                         </div>
                       </div>
                     ))
@@ -413,7 +415,7 @@ export default function Lobby() {
               ) : (
                 onlineUsers.map(u => (
                   <div key={u.id} className="online-chip">
-                    {adminUsers.find(au => au.id === u.id)?.nickname || `用户 #${u.id}`}
+                    {(u as any).nickname || (u as any).username || `用户 #${u.id}`}
                   </div>
                 ))
               )}

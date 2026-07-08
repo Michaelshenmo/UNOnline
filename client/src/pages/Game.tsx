@@ -27,6 +27,9 @@ export default function Game() {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
   const [spectators, setSpectators] = useState<{ id: number; username: string }[]>([]);
+  const [adminTarget, setAdminTarget] = useState<any | null>(null);
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [kickedInfo, setKickedInfo] = useState<string | null>(null);
   const hasJoined = useRef(false);
 
   const isMyTurn = gameState ? gameState.players[gameState.currentPlayerIndex]?.id === user?.id : false;
@@ -73,6 +76,10 @@ export default function Game() {
       setShowPlayPrompt(true);
     });
 
+    s.on('kicked', ({ reason }: { reason: string }) => { setKickedInfo(reason); });
+    s.on('banned', ({ reason }: { reason: string }) => { setKickedInfo(reason); });
+    s.on('converted_to_spectator', ({ reason }: { reason: string }) => { setKickedInfo(reason); setIsSpectator(true); });
+
     s.on('spectator_info', ({ spectators: list }: { spectators: { id: number; username: string }[] }) => {
       setSpectators(list);
       if (list.some(s => s.id === user?.id)) setIsSpectator(true);
@@ -118,12 +125,26 @@ export default function Game() {
   function callUno() { getSocket().emit('call_uno'); setShowUnoButton(false); }
   function leaveGame() { getSocket().emit('leave_room'); navigate('/lobby'); }
 
+  const isAdmin = user?.role === 'admin';
+  function openAdminDialog(target: any) { setAdminTarget(target); setConfirmAction(null); }
+  function doKick() { if (!adminTarget) return; getSocket().emit('kick_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
+  function doBan() { if (!adminTarget) return; getSocket().emit('ban_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
+
   const colorDot = (c: string | null) => {
     if (!c) return null;
     const bg = c === 'red' ? '#e53935' : c === 'yellow' ? '#fdd835' : c === 'green' ? '#43a047' : '#1e88e5';
     return <div style={{ width: 16, height: 16, borderRadius: 4, background: bg, border: '1px solid rgba(255,255,255,0.3)', display: 'inline-block', verticalAlign: 'middle' }} />;
   };
 
+  if (kickedInfo) return (
+    <div className="kicked-overlay">
+      <div className="kicked-dialog">
+        <h2>连接已丢失</h2>
+        <p>{kickedInfo}</p>
+        <md-filled-button style={{ minWidth: 140 }} onClick={() => { setKickedInfo(null); navigate('/lobby'); }}>返回大厅</md-filled-button>
+      </div>
+    </div>
+  );
   if (kicked) return (
     <div className="kicked-overlay">
       <div className="kicked-dialog">
@@ -182,7 +203,9 @@ export default function Game() {
       {/* Players */}
       <div className="game-players">
         {(gameState?.players || players).map((p, i) => (
-          <div key={p.id} className={`player-badge ${gameState && i === gameState.currentPlayerIndex ? 'active' : 'inactive'} ${(p as any).isOut ? 'out' : ''}`}>
+          <div key={p.id} className={`player-badge ${gameState && i === gameState.currentPlayerIndex ? 'active' : 'inactive'} ${(p as any).isOut ? 'out' : ''}`}
+            onClick={isAdmin && p.id !== user?.id ? () => openAdminDialog(p) : undefined}
+            style={{ cursor: isAdmin && p.id !== user?.id ? 'pointer' : 'default' }}>
             <div className="name">
               {(p as any).nickname || p.username} {p.id === user?.id ? '(你)' : ''}
               {(p as any).calledUno && (p as any).cardCount === 1 ? <span className="uno-tag">UNO!</span> : ''}
@@ -215,7 +238,10 @@ export default function Game() {
         <div style={{ position: 'fixed', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'var(--md-sys-color-surface)', borderRadius: 12, padding: 10, boxShadow: 'var(--md-elevation-level2)', zIndex: 50, minWidth: 100 }}>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>观战 ({spectators.length})</div>
           {spectators.map(s => (
-            <div key={s.id} style={{ fontSize: 12, color: '#ccc', padding: '2px 0', textAlign: 'center' }}>{s.nickname || s.username}</div>
+            <div key={s.id} style={{ fontSize: 12, color: '#ccc', padding: '2px 0', textAlign: 'center', cursor: isAdmin && s.id !== user?.id ? 'pointer' : 'default' }}
+              onClick={isAdmin && s.id !== user?.id ? () => openAdminDialog(s) : undefined}>
+              {s.nickname || s.username}
+            </div>
           ))}
         </div>
       )}
@@ -305,6 +331,47 @@ export default function Game() {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <md-filled-button style={{ minWidth: 100 }} onClick={playDrawnCard}>出牌</md-filled-button>
               <md-outlined-button style={{ minWidth: 100 }} onClick={declineDrawnCard}>不出</md-outlined-button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin player info dialog */}
+      {adminTarget && !confirmAction && (
+        <div className="color-picker-overlay" onClick={() => setAdminTarget(null)}>
+          <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, width: '90%', textAlign: 'left' }}>
+            <h3 style={{ marginBottom: 16, textAlign: 'center' }}>玩家信息</h3>
+            <div style={{ fontSize: 14, lineHeight: 2 }}>
+              <div>UID: {adminTarget.id}</div>
+              <div>用户名: {adminTarget.username}</div>
+              <div>昵称: {(adminTarget as any).nickname || adminTarget.username}</div>
+              <div>角色: {(adminTarget as any).isOut !== undefined ? ((adminTarget as any).isOut ? '已出局' : '游戏中') : '观战中'}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={() => setConfirmAction('kick')}>踢出</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 100, '--md-sys-color-primary': '#d32f2f' } as any} onClick={() => setConfirmAction('ban')}>封禁</md-outlined-button>
+            </div>
+            <div style={{ textAlign: 'right', marginTop: 12 }}>
+              <md-outlined-button style={{ minWidth: 80 }} onClick={() => setAdminTarget(null)}>取消</md-outlined-button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin confirmation dialog */}
+      {confirmAction && (
+        <div className="color-picker-overlay">
+          <div className="color-picker-dialog" style={{ maxWidth: 340 }}>
+            <h3 style={{ marginBottom: 12 }}>确认操作</h3>
+            <p style={{ color: '#ccc', fontSize: 14, marginBottom: 16 }}>
+              {confirmAction === 'kick' ? '确定要踢出该玩家吗？' : '确定要封禁该玩家吗？'}
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <md-filled-button style={{ minWidth: 100 }} onClick={() => {
+                if (confirmAction === 'kick') doKick();
+                else doBan();
+              }}>确认</md-filled-button>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={() => setConfirmAction(null)}>取消</md-outlined-button>
             </div>
           </div>
         </div>
