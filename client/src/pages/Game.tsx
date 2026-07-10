@@ -30,6 +30,9 @@ export default function Game() {
   const [adminTarget, setAdminTarget] = useState<any | null>(null);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [kickedInfo, setKickedInfo] = useState<string | null>(null);
+  const [currentSuit, setCurrentSuit] = useState<'light' | 'dark'>('light');
+  const [previewFlip, setPreviewFlip] = useState(false);
+  const [gameMode, setGameMode] = useState<string>('standard');
   const hasJoined = useRef(false);
 
   const isMyTurn = gameState ? gameState.players[gameState.currentPlayerIndex]?.id === user?.id : false;
@@ -54,6 +57,8 @@ export default function Game() {
 
     s.on('game_state', (state: GameState) => {
       setGameState(state); setDirection(state.direction);
+      setCurrentSuit(state.currentSuit || 'light');
+      if (state.mode) setGameMode(state.mode);
       const m = state.players.find(p => p.id === user?.id);
       if (m?.hand) setMyHand(m.hand);
       setError('');
@@ -61,9 +66,12 @@ export default function Game() {
       setIsSpectator(!m && state.state !== 'waiting');
     });
 
-    s.on('room_info', ({ room }: { room: Room }) => setRoomInfo(room));
+    s.on('room_info', ({ room }: { room: Room }) => { setRoomInfo(room); if (room.gameMode) setGameMode(room.gameMode); });
+    s.on('game_mode_changed', ({ mode }: { mode: string }) => { setGameMode(mode); });
     s.on('game_started', (data: { gameState: GameState }) => {
       setGameState(data.gameState); setDirection(data.gameState.direction);
+      setCurrentSuit(data.gameState.currentSuit || 'light');
+      if (data.gameState.mode) setGameMode(data.gameState.mode);
       const m = data.gameState.players.find((p: any) => p.id === user?.id);
       if (m?.hand) setMyHand(m.hand);
     });
@@ -76,9 +84,9 @@ export default function Game() {
       setShowPlayPrompt(true);
     });
 
-    s.on('kicked', ({ reason }: { reason: string }) => { setKickedInfo(reason); });
-    s.on('banned', ({ reason }: { reason: string }) => { setKickedInfo(reason); });
-    s.on('converted_to_spectator', ({ reason }: { reason: string }) => { setKickedInfo(reason); setIsSpectator(true); });
+    s.on('kicked', () => { setKickedInfo('kicked'); });
+    s.on('banned', () => { setKickedInfo('banned'); });
+    s.on('converted_to_spectator', () => { setKickedInfo('converted'); setIsSpectator(true); });
 
     s.on('spectator_info', ({ spectators: list }: { spectators: { id: number; username: string }[] }) => {
       setSpectators(list);
@@ -90,11 +98,15 @@ export default function Game() {
     return () => {
       s.off('game_state'); s.off('room_info'); s.off('game_started');
       s.off('player_joined'); s.off('player_left');
-      s.off('game_over'); s.off('room_disbanded'); s.off('draw_playable'); s.off('error');
+      s.off('game_over'); s.off('room_disbanded'); s.off('draw_playable'); s.off('error'); s.off('game_mode_changed');
     };
   }, [token, user?.id]);
 
-  function startGame() { getSocket().emit('start_game'); }
+  function setMode(mode: string) {
+    setGameMode(mode);
+    getSocket().emit('set_game_mode', { mode });
+  }
+  function startGame() { getSocket().emit('start_game', { mode: gameMode }); }
   function isStackable(card: Card): boolean {
     const lastVal = gameState?.lastDrawValue ?? 0;
     if (card.type === 'draw2') return 2 >= lastVal;
@@ -140,7 +152,7 @@ export default function Game() {
     <div className="kicked-overlay">
       <div className="kicked-dialog">
         <h2>连接已丢失</h2>
-        <p>{kickedInfo}</p>
+        <p>{kickedInfo === 'banned' ? '你已被管理员封禁' : '你已被管理员踢出游戏'}</p>
         <md-filled-button style={{ minWidth: 140 }} onClick={() => { setKickedInfo(null); navigate('/lobby'); }}>返回大厅</md-filled-button>
       </div>
     </div>
@@ -195,7 +207,15 @@ export default function Game() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#aaa' }}>
             <span>方向: {direction === 1 ? '顺时针 →' : '逆时针 ←'}</span>
             {gameState.currentColor && <span>{colorDot(gameState.currentColor)} 当前颜色</span>}
+            {gameMode === 'flip' && <span style={{ fontWeight: 500, color: currentSuit === 'light' ? '#fff' : '#888' }}>◈ {currentSuit === 'light' ? '浅色面' : '深色面'}</span>}
             <span>牌堆: {gameState.drawPileCount}张</span>
+            {gameMode === 'flip' && (
+              <md-outlined-button style={{ minWidth: 120, height: 28, fontSize: 11, padding: '0 8px' }}
+                onMouseDown={() => setPreviewFlip(true)}
+                onMouseUp={() => setPreviewFlip(false)}
+                onMouseLeave={() => setPreviewFlip(false)}
+              >预览{currentSuit === 'light' ? '深色' : '浅色'}面</md-outlined-button>
+            )}
           </div>
         )}
       </div>
@@ -266,7 +286,7 @@ export default function Game() {
               {topCard && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <span style={{ fontSize: 11, color: '#aaa' }}>弃牌堆</span>
-                  <CardComponent card={topCard} />
+                  <CardComponent card={topCard} suit={currentSuit} previewFlip={previewFlip} />
                 </div>
               )}
             </div>
@@ -293,13 +313,25 @@ export default function Game() {
         ) : (
           <div style={{ textAlign: 'center' }}>
             {isHost ? (
-              <md-filled-button onClick={startGame} style={{ minWidth: 200, fontSize: 16, height: 48 }}>
-                开始游戏 ({players.length} 人)
-              </md-filled-button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 260 }}>
+                  {gameMode === 'standard'
+                    ? <md-filled-button style={{ width: '100%' }} onClick={() => setMode('standard')}>UNO Standard</md-filled-button>
+                    : <md-outlined-button style={{ width: '100%' }} onClick={() => setMode('standard')}>UNO Standard</md-outlined-button>
+                  }
+                  {gameMode === 'flip'
+                    ? <md-filled-button style={{ width: '100%' }} onClick={() => setMode('flip')}>UNO Flip</md-filled-button>
+                    : <md-outlined-button style={{ width: '100%' }} onClick={() => setMode('flip')}>UNO Flip</md-outlined-button>
+                  }
+                </div>
+                <md-filled-button onClick={startGame} style={{ minWidth: 200, fontSize: 16, height: 48 }}>
+                  开始游戏 ({players.length} 人)
+                </md-filled-button>
+              </div>
             ) : (
               <div>
                 <h3 style={{ marginBottom: 8, fontWeight: 500 }}>等待房主开始游戏...</h3>
-                <p style={{ color: '#aaa', fontSize: 13 }}>当前 {players.length} 人已加入</p>
+                <p style={{ color: '#aaa', fontSize: 13 }}>当前 {players.length} 人已加入 | 模式: {gameMode === 'flip' ? 'UNO Flip' : 'UNO Standard'}</p>
               </div>
             )}
           </div>
@@ -315,7 +347,7 @@ export default function Game() {
               : isMyTurn ? '- 点击出牌'
               : '- 等待你的回合'}
           </div>
-          <PlayerHand cards={myHand} onPlayCard={handlePlayCard} disabled={!isMyTurn} />
+          <PlayerHand cards={myHand} onPlayCard={handlePlayCard} disabled={!isMyTurn} suit={currentSuit} previewFlip={previewFlip} />
         </div>
       )}
 
@@ -325,7 +357,7 @@ export default function Game() {
           <div className="color-picker-dialog" style={{ maxWidth: 360 }}>
             <h3 style={{ marginBottom: 12, fontWeight: 500, fontSize: 16 }}>抽到了可出的牌！</h3>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-              <CardComponent card={drawnCard} />
+              <CardComponent card={drawnCard} suit={currentSuit} previewFlip={previewFlip} />
             </div>
             <p style={{ color: '#ccc', fontSize: 13, marginBottom: 16 }}>是否要打出这张牌？</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>

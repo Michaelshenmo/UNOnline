@@ -63,6 +63,9 @@ export default function Lobby() {
     s.on('spectator_joined', ({ room }: { room: Room & { id: string } }) => {
       navigate(`/game/${room.id}`);
     });
+    s.on('game_mode_changed', ({ mode }) => {
+      setRooms(prev => prev.map(r => r.id === currentRoom?.id ? { ...r, gameMode: mode } : r));
+    });
     s.on('error', ({ message }: { message: string }) => setError(message));
 
     fetchRooms();

@@ -1,10 +1,8 @@
-import { Card as CardType } from '../types';
+import { Card as CardType, FlipCardPair } from '../types';
 
 const colorMap: Record<string, string> = {
-  red: '#e53935',
-  yellow: '#fdd835',
-  green: '#43a047',
-  blue: '#1e88e5',
+  red: '#e53935', yellow: '#fdd835', green: '#43a047', blue: '#1e88e5',
+  orange: '#ff6d00', purple: '#aa00ff', pink: '#e91e88', teal: '#00bcd4',
 };
 
 function getCardDisplay(card: CardType) {
@@ -13,24 +11,44 @@ function getCardDisplay(card: CardType) {
     case 'skip': return '⊘';
     case 'reverse': return '⟳';
     case 'draw2': return '+2';
-    case 'wild': return '★';
+    case 'draw1': return '+1';
+    case 'draw5': return '+5';
+    case 'wild2': return '+2';
     case 'wild4': return '+4';
+    case 'wild': return '★';
+    case 'flip': return '⟷';
   }
 }
 
+function resolveCard(card: CardType | FlipCardPair, suit: 'light' | 'dark', flipped: boolean): CardType {
+  if ('light' in card && 'dark' in card) {
+    const side = flipped ? (suit === 'light' ? 'dark' : 'light') : suit;
+    return (card as FlipCardPair)[side];
+  }
+  return card as CardType;
+}
+
 interface CardProps {
-  card: CardType;
+  card: CardType | FlipCardPair;
   onClick?: () => void;
   disabled?: boolean;
   small?: boolean;
   hidden?: boolean;
+  suit?: 'light' | 'dark';
+  previewFlip?: boolean;
 }
 
-export default function CardComponent({ card, onClick, disabled, small, hidden }: CardProps) {
-  const bg = card.color ? colorMap[card.color] : '#212121';
-  const textColor = card.color === 'yellow' ? '#333' : '#fff';
-  const display = hidden ? '?' : getCardDisplay(card);
+export default function CardComponent({ card, onClick, disabled, small, hidden, suit, previewFlip }: CardProps) {
+  const displayCard = resolveCard(card, suit || 'light', previewFlip || false);
+  const isFlipPair = 'light' in card && 'dark' in card;
+  const side = isFlipPair ? (previewFlip ? (suit === 'light' ? 'dark' : 'light') : suit) : null;
+
+  const bg = displayCard.color ? colorMap[displayCard.color] : '#212121';
+  const textColor = displayCard.color === 'yellow' || displayCard.color === 'teal' ? '#333' : '#fff';
+  const display = hidden ? '?' : getCardDisplay(displayCard);
   const size = small ? { width: 64, height: 90, fontSize: 20 } : { width: 90, height: 130, fontSize: 28 };
+  const borderColor = side === 'dark' ? '#111' : side === 'light' ? '#fff' : 'rgba(255,255,255,0.2)';
+  const borderWidth = side ? 2.5 : 2;
 
   return (
     <div
@@ -53,7 +71,7 @@ export default function CardComponent({ card, onClick, disabled, small, hidden }
         fontSize: size.fontSize,
         userSelect: 'none',
         position: 'relative',
-        border: '2px solid rgba(255,255,255,0.1)',
+        border: `${borderWidth}px solid ${borderColor}`,
         flexShrink: 0,
       }}
       onMouseEnter={(e) => {

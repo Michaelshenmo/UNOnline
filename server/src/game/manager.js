@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { UnoEngine } from './engine.js';
+import { FlipUnoEngine } from './flip-engine.js';
 
 class GameManager {
   constructor() {
@@ -25,6 +26,7 @@ class GameManager {
     const room = {
       id: roomId,
       hostId,
+      gameMode: 'standard',
       players: [{ id: hostId, username: hostUsername, ready: false }],
       spectators: [],
       engine: null,
@@ -110,6 +112,7 @@ class GameManager {
       result.push({
         id,
         hostId: room.hostId,
+        gameMode: room.gameMode || 'standard',
         playerCount: room.players.length,
         spectatorCount: room.spectators.length,
         players: room.players.map(p => ({ id: p.id, username: p.username })),
@@ -126,7 +129,8 @@ class GameManager {
     if (room.players.length < 2) return { error: '至少需要2名玩家' };
     if (room.state !== 'waiting') return { error: '游戏已经开始' };
 
-    const engine = new UnoEngine();
+    const Engine = room.gameMode === 'flip' ? FlipUnoEngine : UnoEngine;
+    const engine = new Engine();
     const playerInfos = room.players.map(p => ({ id: p.id, username: p.username, status: 'normal' }));
     engine.initialize(playerInfos);
     room.engine = engine;

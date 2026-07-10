@@ -23,13 +23,21 @@ export interface PlayerState {
   hand?: Card[];
 }
 
+export interface FlipCardPair {
+  light: Card;
+  dark: Card;
+}
+
 export interface GameState {
+  mode?: 'standard' | 'flip';
   state: 'waiting' | 'playing' | 'finished';
+  currentSuit?: 'light' | 'dark';
   players: PlayerState[];
   currentPlayerIndex: number;
   direction: 1 | -1;
   currentColor: string | null;
   topCard: Card | null;
+  topFlipCard?: FlipCardPair | null;
   discardCount: number;
   drawPileCount: number;
   pendingDraw: number;
@@ -42,6 +50,7 @@ export interface GameState {
 export interface Room {
   id: string;
   hostId: number;
+  gameMode?: string;
   playerCount: number;
   spectatorCount?: number;
   players: { id: number; username: string }[];

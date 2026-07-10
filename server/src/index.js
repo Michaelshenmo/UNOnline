@@ -146,6 +146,16 @@ io.on('connection', (socket) => {
     updateRooms();
   });
 
+  socket.on('set_game_mode', ({ mode }) => {
+    if (!currentUser) return;
+    if (!['standard', 'flip'].includes(mode)) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || room.hostId !== currentUser.id || room.state !== 'waiting') return;
+    room.gameMode = mode;
+    io.to(`room:${room.id}`).emit('game_mode_changed', { mode });
+    updateRooms();
+  });
+
   socket.on('kick_player', ({ targetId }) => {
     if (!currentUser || currentUser.role !== 'admin') return;
     if (currentUser.id === targetId) return;
@@ -154,7 +164,7 @@ io.on('connection', (socket) => {
     const isPlaying = room.engine && room.players.some(p => p.id === targetId);
     const result = manager.leaveRoom(targetId);
     if (result && !result.disbanded) {
-      io.to(`user:${targetId}`).emit('kicked', { reason: '你已被管理员踢出游戏' });
+      io.to(`user:${targetId}`).emit('kicked', { reason: 'kicked' });
       io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
       if (result.room.state === 'playing') broadcastGameState(result.room);
     }
@@ -169,7 +179,7 @@ io.on('connection', (socket) => {
     db.prepare("UPDATE users SET status = 'banned' WHERE id = ?").run(targetId);
     const result = manager.leaveRoom(targetId);
     if (result && !result.disbanded) {
-      io.to(`user:${targetId}`).emit('banned', { reason: '你已被管理员封禁' });
+      io.to(`user:${targetId}`).emit('banned', { reason: 'banned' });
       io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
       if (result.room.state === 'playing') broadcastGameState(result.room);
     }
@@ -191,16 +201,19 @@ io.on('connection', (socket) => {
     if (room.engine.currentPlayerIndex === room.engine.players.indexOf(player)) {
       room.engine.currentPlayerIndex = room.engine.nextPlayerIndex();
     }
-    io.to(`user:${targetId}`).emit('converted_to_spectator', { reason: '你已被管理员转为观战者' });
+    io.to(`user:${targetId}`).emit('converted_to_spectator', { reason: '已被管理员转为观战者' });
     broadcastGameState(room);
     broadcastRoomState(room);
     updateRooms();
   });
 
-  socket.on('start_game', () => {
+  socket.on('start_game', ({ mode } = {}) => {
     if (!currentUser) return;
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room) { socket.emit('error', { message: '不在房间中' }); return; }
+    if (mode && ['standard', 'flip'].includes(mode) && room.state === 'waiting') {
+      room.gameMode = mode;
+    }
     const result = manager.startGame(room.id, currentUser.id);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     for (const player of room.engine.players) {

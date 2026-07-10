@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
+    "@material/web": "^2.4.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
