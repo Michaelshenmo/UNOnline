@@ -16,8 +16,12 @@ export default function Lobby() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [editSettings, setEditSettings] = useState<Record<string, string>>({ allow_registration: 'true' });
   const [error, setError] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [announcement, setAnnouncement] = useState('');
+  const [announcementVersion, setAnnouncementVersion] = useState(0);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showProfileCenter, setShowProfileCenter] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
@@ -33,6 +37,7 @@ export default function Lobby() {
   const turnTimeoutRef = useRef<any>(null);
   const unoPenaltyRef = useRef<any>(null);
   const createUserDialogRef = useRef<any>(null);
+  const successTimerRef = useRef<any>(null);
   const profileNicknameRef = useRef<any>(null);
   const profilePwdOldRef = useRef<any>(null);
   const profilePwdNewRef = useRef<any>(null);
@@ -43,6 +48,7 @@ export default function Lobby() {
   const adminEditStatusRef = useRef<any>(null);
   const adminEditPwdRef = useRef<any>(null);
   const adminEditPwdConfirmRef = useRef<any>(null);
+
   const profileDialogRef = useRef<any>(null);
   const adminEditDialogRef = useRef<any>(null);
 
@@ -70,6 +76,7 @@ export default function Lobby() {
 
     fetchRooms();
     fetchOnlineUsers();
+    checkAnnouncement();
 
     return () => {
       s.off('rooms_update');
@@ -79,6 +86,23 @@ export default function Lobby() {
       s.off('error');
     };
   }, [token, navigate]);
+
+  async function checkAnnouncement() {
+    try {
+      const data = await api.getAnnouncement();
+      setAnnouncement(data.announcement || '');
+      setAnnouncementVersion(data.version || 0);
+      if (data.announcement && data.announcement.trim()) {
+        const seen = parseInt(localStorage.getItem('announcement_seen') || '0');
+        if (data.version > seen) setShowAnnouncement(true);
+      }
+    } catch {}
+  }
+
+  function dismissAnnouncement(neverAgain: boolean) {
+    setShowAnnouncement(false);
+    if (neverAgain) localStorage.setItem('announcement_seen', String(announcementVersion));
+  }
 
   function toggleReg() {
     setEditSettings(prev => ({ ...prev, allow_registration: prev.allow_registration === 'true' ? 'false' : 'true' }));
@@ -122,6 +146,8 @@ export default function Lobby() {
     return () => el.removeEventListener('close', handler);
   }, []);
 
+
+
   useEffect(() => {
     const el = adminEditDialogRef.current;
     if (!el) return;
@@ -163,6 +189,8 @@ export default function Lobby() {
       const s = await api.getSettings();
       setSettings(s);
       setEditSettings(s);
+      setAnnouncement(s.announcement || '');
+      setAnnouncementVersion(parseInt(s.announcement_version) || 0);
     } catch (e: any) {
       setError(e.message || '加载管理数据失败');
     }
@@ -189,12 +217,18 @@ export default function Lobby() {
     if (maxPlayersRef.current?.value) data.max_players = maxPlayersRef.current.value;
     if (turnTimeoutRef.current?.value) data.turn_timeout = turnTimeoutRef.current.value;
     if (unoPenaltyRef.current?.value) data.uno_penalty = unoPenaltyRef.current.value;
+    data.announcement = editSettings.announcement || '';
     try {
       await api.updateSettings(data);
       const s = await api.getSettings();
       setSettings(s);
       setEditSettings(s);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      setIsSuccess(true);
+      setError('设置已保存');
+      successTimerRef.current = setTimeout(() => { setError(''); setIsSuccess(false); }, 2000);
     } catch (e: any) {
+      setIsSuccess(false);
       setError(e.message || '保存设置失败');
     }
   }
@@ -274,10 +308,15 @@ export default function Lobby() {
       </div>
 
       {isBanned && <div style={{ background: '#b71c1c', color: '#fff', padding: '10px 16px', borderRadius: 10, marginBottom: 12, fontSize: 13, textAlign: 'center' }}>你的账号已被封禁，无法创建、加入或观战游戏</div>}
-      {error && <div style={{ background: '#c62828', color: '#fff', padding: '10px 16px', borderRadius: 10, marginBottom: 12, fontSize: 13 }}>{error}</div>}
+      <div className={`msg-banner ${error ? 'msg-banner-show' : 'msg-banner-enter'}`}>
+        {error ? <div style={{ background: isSuccess ? '#2e7d32' : '#c62828', color: '#fff', padding: '10px 16px', borderRadius: 10, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <md-icon style={{ fontSize: 16 }}>{isSuccess ? 'check_circle' : 'error'}</md-icon>
+          {error}
+        </div> : null}
+      </div>
 
       {showAdmin && isAdmin ? (
-        <div className="admin-panel" style={{ display: 'flex', gap: 20 }}>
+        <div className="admin-panel" key="admin-panel" style={{ display: 'flex', gap: 20 }}>
           <md-list style={{ width: 200, flexShrink: 0, '--md-list-container-color': 'var(--md-sys-color-surface)', borderRadius: 16, padding: 8, boxShadow: 'var(--md-elevation-level1)', height: 'fit-content' } as any}>
             <md-list-item type="button" onClick={() => setAdminTab('users')}>
               <md-icon slot="start" style={{ color: adminTab === 'users' ? '#e53935' : '#aaa' }}>manage_accounts</md-icon>
@@ -324,7 +363,7 @@ export default function Lobby() {
                         </td>
                         <td>{new Date(u.created_at).toLocaleDateString()}</td>
                         <td className="actions">
-                          <md-text-button onClick={() => {
+                          <md-text-button style={{ minWidth: 80 }} onClick={() => {
                             setAdminEditTarget(u); setAdminEditError('');
                             setTimeout(() => {
                               if (adminEditUsernameRef.current) adminEditUsernameRef.current.value = u.username;
@@ -335,7 +374,7 @@ export default function Lobby() {
                               if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
                             }, 50);
                           }}>修改信息</md-text-button>
-                          <md-text-button onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
+                          <md-text-button style={{ minWidth: 60 }} onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
                         </td>
                       </tr>
                     ))}
@@ -360,6 +399,12 @@ export default function Lobby() {
                     <md-outlined-text-field ref={unoPenaltyRef} label="未喊UNO罚牌数" type="number" value={editSettings.uno_penalty || '2'}></md-outlined-text-field>
                   </div>
                   <div>
+                    <div className="md-outlined-textarea-wrap">
+                      <textarea value={editSettings.announcement || ''} onChange={(e) => setEditSettings({...editSettings, announcement: e.target.value})} rows={4} placeholder=" "></textarea>
+                      <span className="md-outlined-textarea-label">公告内容（支持 HTML）</span>
+                    </div>
+                  </div>
+                  <div>
                     <md-filled-button style={{ minWidth: 200 }} onClick={handleSaveSettings}>保存设置</md-filled-button>
                   </div>
                 </div>
@@ -368,7 +413,7 @@ export default function Lobby() {
           </div>
         </div>
       ) : (
-        <div className="lobby-content">
+        <div className="lobby-content" key="lobby-content">
           <div className="section-card">
             <h3 className="section-title"><md-icon>meeting_room</md-icon> 游戏房间 ({rooms.length})</h3>
             {currentRoom ? (
@@ -500,6 +545,20 @@ export default function Lobby() {
           <md-filled-button style={{ minWidth: 100 }} onClick={handleCreateUser}>创建</md-filled-button>
         </div>
       </dialog>
+
+      {/* Announcement dialog */}
+      {showAnnouncement && (
+        <div className="color-picker-overlay">
+          <div className="color-picker-dialog" style={{ maxWidth: 500, width: '90%', textAlign: 'left' }}>
+            <h3 style={{ marginBottom: 14, fontWeight: 500 }}><md-icon style={{ fontSize: 20, verticalAlign: 'middle', marginRight: 6 }}>campaign</md-icon> 公告</h3>
+            <div style={{ fontSize: 14, lineHeight: 1.7, color: '#ddd', maxHeight: 300, overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: announcement }} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={() => dismissAnnouncement(false)}>关闭</md-outlined-button>
+              <md-filled-button style={{ minWidth: 100 }} onClick={() => dismissAnnouncement(true)}>不再显示</md-filled-button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

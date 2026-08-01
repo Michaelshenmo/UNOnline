@@ -96,10 +96,14 @@ export const api = {
     });
   },
 
-  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; role?: string }) {
+  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; role?: string; status?: string }) {
     return request(`/admin/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  },
+
+  getAnnouncement() {
+    return request('/announcement');
   },
 };

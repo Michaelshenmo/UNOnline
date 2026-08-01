@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { UnoEngine } from './engine.js';
 import { FlipUnoEngine } from './flip-engine.js';
+import { NoMercyEngine } from './no-mercy-engine.js';
 
 class GameManager {
   constructor() {
@@ -129,7 +130,7 @@ class GameManager {
     if (room.players.length < 2) return { error: '至少需要2名玩家' };
     if (room.state !== 'waiting') return { error: '游戏已经开始' };
 
-    const Engine = room.gameMode === 'flip' ? FlipUnoEngine : UnoEngine;
+    const Engine = room.gameMode === 'flip' ? FlipUnoEngine : room.gameMode === 'no-mercy' ? NoMercyEngine : UnoEngine;
     const engine = new Engine();
     const playerInfos = room.players.map(p => ({ id: p.id, username: p.username, status: 'normal' }));
     engine.initialize(playerInfos);

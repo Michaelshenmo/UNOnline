@@ -29,7 +29,8 @@ export interface FlipCardPair {
 }
 
 export interface GameState {
-  mode?: 'standard' | 'flip';
+  mode?: 'standard' | 'flip' | 'no-mercy';
+  pendingAction?: any;
   state: 'waiting' | 'playing' | 'finished';
   currentSuit?: 'light' | 'dark';
   players: PlayerState[];

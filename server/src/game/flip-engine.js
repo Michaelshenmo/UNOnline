@@ -19,7 +19,11 @@ function createHalf(suit, colors) {
   for (let i = 0; i < 4; i++) {
     cards.push({ suit, type: 'wild', color: null, value: null });
     cards.push({ suit, type: 'wild2', color: null, value: null });
-    cards.push({ suit, type: 'flip', color: null, value: null });
+  }
+  for (const color of colors) {
+    for (let i = 0; i < 2; i++) {
+      cards.push({ suit, type: 'flip', color, value: null });
+    }
   }
   return cards;
 }
@@ -38,6 +42,25 @@ function createFlipDeck() {
   const deck = [];
   for (let i = 0; i < light.length; i++) {
     deck.push({ light: light[i], dark: dark[i] });
+  }
+  let fixed = true;
+  while (fixed) {
+    fixed = false;
+    for (let i = 0; i < deck.length; i++) {
+      for (let j = i + 1; j < deck.length; j++) {
+        const a = deck[i], b = deck[j];
+        const aMatch = a.light.type === a.dark.type && a.light.value === a.dark.value;
+        const bMatch = b.light.type === b.dark.type && b.light.value === b.dark.value;
+        if (!aMatch && !bMatch) continue;
+        if (aMatch && bMatch && (a.light.type === b.dark.type && a.light.value === b.dark.value)) continue;
+        const aSwap = a.light.type !== b.dark.type || a.light.value !== b.dark.value;
+        const bSwap = b.light.type !== a.dark.type || b.light.value !== a.dark.value;
+        if (aSwap && bSwap) {
+          [deck[i].dark, deck[j].dark] = [deck[j].dark, deck[i].dark];
+          fixed = true;
+        }
+      }
+    }
   }
   return shuffle(deck);
 }
@@ -61,6 +84,7 @@ export class FlipUnoEngine {
     this.lastAction = null;
     this.pendingDraw = 0;
     this.lastDrawValue = 0;
+    this.pendingFlipPlayerId = null;
   }
 
   face(card) {
@@ -125,7 +149,7 @@ export class FlipUnoEngine {
       if (cardFace.type === 'wild2') return 2 >= this.lastDrawValue;
       return false;
     }
-    if (cardFace.type === 'wild' || cardFace.type === 'wild2' || cardFace.type === 'flip') return true;
+    if (cardFace.type === 'wild' || cardFace.type === 'wild2') return true;
     if (cardFace.color === this.currentColor) return true;
     if (cardFace.type === 'number' && cardFace.value === topFace.value && topFace.type === 'number') return true;
     if (cardFace.type === topFace.type && cardFace.type !== 'number') return true;
@@ -144,7 +168,7 @@ export class FlipUnoEngine {
 
     player.hand.splice(cardIndex, 1);
 
-    if (cardFace.type === 'wild' || cardFace.type === 'wild2' || cardFace.type === 'flip') {
+    if (cardFace.type === 'wild' || cardFace.type === 'wild2') {
       if (!chosenColor || ![...LIGHT_COLORS, ...DARK_COLORS].includes(chosenColor)) {
         player.hand.push(card);
         return { error: '请选择一种颜色' };
@@ -163,8 +187,33 @@ export class FlipUnoEngine {
 
     if (cardFace.type === 'flip') {
       this.currentSuit = this.currentSuit === 'light' ? 'dark' : 'light';
-      this.currentColor = this.face(card).color;
-      this.currentPlayerIndex = this.nextPlayerIndex();
+      const newFace = this.face(card);
+      this.discardPile[this.discardPile.length - 1] = card;
+      this.lastAction = { type: 'play', playerId, card: newFace };
+
+      if (newFace.type === 'wild' || newFace.type === 'wild2') {
+        this.pendingFlipPlayerId = player.id;
+        if (handEmpty) { this.eliminatePlayer(player); return { success: true, eliminated: true, flipped: true, needsColor: true }; }
+        return { success: true, flipped: true, needsColor: true };
+      }
+
+      this.currentColor = newFace.color;
+
+      if (newFace.type === 'skip') {
+        this.currentPlayerIndex = this.nextPlayerIndex();
+        this.currentPlayerIndex = this.nextPlayerIndex();
+      } else if (newFace.type === 'reverse') {
+        const active = this.players.filter(p => !p.isOut);
+        if (active.length === 2) { this.currentPlayerIndex = this.nextPlayerIndex(); this.currentPlayerIndex = this.nextPlayerIndex(); }
+        else { this.direction *= -1; this.currentPlayerIndex = this.nextPlayerIndex(); }
+      } else if (newFace.type === 'draw1' || newFace.type === 'draw5') {
+        this.pendingDraw += newFace.type === 'draw5' ? 5 : 1;
+        this.lastDrawValue = newFace.type === 'draw5' ? 5 : 1;
+        this.currentPlayerIndex = this.nextPlayerIndex();
+      } else {
+        this.currentPlayerIndex = this.nextPlayerIndex();
+      }
+
       if (handEmpty) { this.eliminatePlayer(player); return { success: true, eliminated: true, flipped: true }; }
       return { success: true, flipped: true };
     }
@@ -199,6 +248,19 @@ export class FlipUnoEngine {
 
     const nextP = this.players[this.currentPlayerIndex];
     if (nextP && nextP.isOut) this.currentPlayerIndex = this.nextPlayerIndex();
+    return { success: true };
+  }
+
+  chooseFlipColor(playerId, color) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player || player.isOut) return { error: '无效的玩家' };
+    if (this.pendingFlipPlayerId !== playerId) return { error: '没有待选颜色' };
+    if (![...LIGHT_COLORS, ...DARK_COLORS].includes(color)) return { error: '无效的颜色' };
+    this.currentColor = color;
+    this.pendingFlipPlayerId = null;
+    this.lastAction = { type: 'flip_color', playerId, color };
+    this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
+    this.currentPlayerIndex = this.nextPlayerIndex();
     return { success: true };
   }
 

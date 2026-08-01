@@ -32,14 +32,14 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>🎴 UNO Online</h1>
+        <h1><md-icon style={{ fontSize: 28, color: '#e53935', verticalAlign: 'middle', marginRight: 6 }}>playing_cards</md-icon> UNO Online</h1>
         <p className="subtitle">联机UNO卡牌游戏</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
+            <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required name="username" autocomplete="username" onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
+            <md-outlined-text-field ref={passwordRef} label="密码" type="password" required name="current-password" autocomplete="current-password" onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div style={{ marginTop: 8 }}>

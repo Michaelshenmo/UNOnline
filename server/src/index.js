@@ -29,6 +29,12 @@ app.get('/api/rooms', (req, res) => {
   res.json(manager.getRooms());
 });
 
+app.get('/api/announcement', (req, res) => {
+  const announcement = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement'").get();
+  const version = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement_version'").get();
+  res.json({ announcement: announcement?.value || '', version: parseInt(version?.value) || 0 });
+});
+
 app.get('/api/online-users', (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -148,7 +154,7 @@ io.on('connection', (socket) => {
 
   socket.on('set_game_mode', ({ mode }) => {
     if (!currentUser) return;
-    if (!['standard', 'flip'].includes(mode)) return;
+    if (!['standard', 'flip', 'no-mercy'].includes(mode)) return;
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room || room.hostId !== currentUser.id || room.state !== 'waiting') return;
     room.gameMode = mode;
@@ -211,7 +217,7 @@ io.on('connection', (socket) => {
     if (!currentUser) return;
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room) { socket.emit('error', { message: '不在房间中' }); return; }
-    if (mode && ['standard', 'flip'].includes(mode) && room.state === 'waiting') {
+    if (mode && ['standard', 'flip', 'no-mercy'].includes(mode) && room.state === 'waiting') {
       room.gameMode = mode;
     }
     const result = manager.startGame(room.id, currentUser.id);
@@ -229,6 +235,9 @@ io.on('connection', (socket) => {
     const result = room.engine.playCard(currentUser.id, cardIndex, color);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
+    if (result.needsColor) {
+      socket.emit('flip_color_needed');
+    }
     if (room.engine.state === 'finished') {
       io.to(`room:${room.id}`).emit('game_over', {
         rankings: room.engine.rankings,
@@ -253,6 +262,36 @@ io.on('connection', (socket) => {
     const room = manager.getRoomByPlayer(currentUser.id);
     if (!room || !room.engine) return;
     const result = room.engine.declinePlay(currentUser.id);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    broadcastGameState(room);
+  });
+
+  socket.on('choose_swap_target', ({ targetId }) => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine || !room.engine.chooseSwapTarget) return;
+    const result = room.engine.chooseSwapTarget(currentUser.id, targetId);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    broadcastGameState(room);
+    if (room.engine.state === 'finished') {
+      io.to(`room:${room.id}`).emit('game_over', { rankings: room.engine.rankings });
+    }
+  });
+
+  socket.on('draw_wheel_card', () => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine || !room.engine.drawWheelCard) return;
+    const result = room.engine.drawWheelCard(currentUser.id);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    broadcastGameState(room);
+  });
+
+  socket.on('choose_flip_color', ({ color }) => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine || room.engine.chooseFlipColor === undefined) return;
+    const result = room.engine.chooseFlipColor(currentUser.id, color);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
   });

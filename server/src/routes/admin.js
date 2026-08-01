@@ -40,12 +40,20 @@ router.get('/settings', authenticateToken, requireAdmin, (req, res) => {
 });
 
 router.put('/settings', authenticateToken, requireAdmin, (req, res) => {
-  const { max_players, turn_timeout, uno_penalty, allow_registration } = req.body;
+  const { max_players, turn_timeout, uno_penalty, allow_registration, announcement } = req.body;
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   if (max_players) upsert.run('max_players', String(Math.min(10, Math.max(2, parseInt(max_players)))));
   if (turn_timeout) upsert.run('turn_timeout', String(Math.max(10, parseInt(turn_timeout))));
   if (uno_penalty !== undefined) upsert.run('uno_penalty', String(Math.max(0, parseInt(uno_penalty))));
   if (allow_registration !== undefined) upsert.run('allow_registration', (allow_registration === true || allow_registration === 'true') ? 'true' : 'false');
+  if (announcement !== undefined) {
+    const old = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement'").get()?.value || '';
+    if (announcement !== old) {
+      upsert.run('announcement', announcement);
+      const current = parseInt(db.prepare("SELECT value FROM system_settings WHERE key = 'announcement_version'").get()?.value || '0');
+      upsert.run('announcement_version', String(current + 1));
+    }
+  }
   res.json({ message: '设置已更新' });
 });
 

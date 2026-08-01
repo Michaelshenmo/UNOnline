@@ -26,6 +26,12 @@ export default function Game() {
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closingPicker, setClosingPicker] = useState(false);
+  const [closingPrompt, setClosingPrompt] = useState(false);
+  const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [showWheelDraw, setShowWheelDraw] = useState(false);
+  const [swapNotice, setSwapNotice] = useState<any>(null);
   const [spectators, setSpectators] = useState<{ id: number; username: string }[]>([]);
   const [adminTarget, setAdminTarget] = useState<any | null>(null);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
@@ -64,10 +70,18 @@ export default function Game() {
       setError('');
       setShowUnoButton(m ? m.cardCount === 1 && !m.calledUno : false);
       setIsSpectator(!m && state.state !== 'waiting');
+      if (state.pendingAction?.type === 'swap' && state.pendingAction.playerId === user?.id) setShowSwapPicker(true);
+      else setShowSwapPicker(false);
+      if (state.pendingAction?.type === 'wheel' && state.pendingAction.playerId === user?.id) setShowWheelDraw(true);
+      else setShowWheelDraw(false);
+      if (state.lastAction?.type === 'swap') setSwapNotice(state.lastAction);
+      else if (state.lastAction?.type === 'pass') setSwapNotice(state.lastAction);
+      else setSwapNotice(null);
     });
 
     s.on('room_info', ({ room }: { room: Room }) => { setRoomInfo(room); if (room.gameMode) setGameMode(room.gameMode); });
     s.on('game_mode_changed', ({ mode }: { mode: string }) => { setGameMode(mode); });
+    s.on('flip_color_needed', () => { setShowColorPicker(true); });
     s.on('game_started', (data: { gameState: GameState }) => {
       setGameState(data.gameState); setDirection(data.gameState.direction);
       setCurrentSuit(data.gameState.currentSuit || 'light');
@@ -98,7 +112,7 @@ export default function Game() {
     return () => {
       s.off('game_state'); s.off('room_info'); s.off('game_started');
       s.off('player_joined'); s.off('player_left');
-      s.off('game_over'); s.off('room_disbanded'); s.off('draw_playable'); s.off('error'); s.off('game_mode_changed');
+      s.off('game_over'); s.off('room_disbanded'); s.off('draw_playable'); s.off('error'); s.off('game_mode_changed'); s.off('flip_color_needed');
     };
   }, [token, user?.id]);
 
@@ -107,32 +121,51 @@ export default function Game() {
     getSocket().emit('set_game_mode', { mode });
   }
   function startGame() { getSocket().emit('start_game', { mode: gameMode }); }
-  function isStackable(card: Card): boolean {
+  function cardFace(card: any) {
+    if (!card) return null;
+    return card.light ? (currentSuit === 'light' ? card.light : card.dark) : card;
+  }
+  function isStackable(card: any): boolean {
+    const face = cardFace(card);
+    if (!face) return false;
     const lastVal = gameState?.lastDrawValue ?? 0;
-    if (card.type === 'draw2') return 2 >= lastVal;
-    if (card.type === 'wild4') return 4 >= lastVal;
+    const drawVals: any = { draw2: 2, draw4: 4, draw1: 1, draw5: 5, wild4: 4, wild2: 2, wild_rev4: 4, wild6: 6, wild10: 10 };
+    const val = drawVals[face.type];
+    if (val) return val >= lastVal;
     return false;
   }
   function handlePlayCard(index: number) {
     if (!isMyTurn) return;
     const card = myHand[index];
     if (!card) return;
+    const face = cardFace(card);
+    if (!face) return;
     if (isStacking && !isStackable(card)) return;
-    if (card.type === 'wild' || card.type === 'wild4') { setPendingCardIndex(index); setShowColorPicker(true); return; }
+    if (['wild', 'wild2', 'wild4', 'wild_rev4', 'wild6', 'wild10', 'wild_wheel'].includes(face.type)) { setPendingCardIndex(index); setShowColorPicker(true); return; }
     getSocket().emit('play_card', { cardIndex: index });
   }
   function acceptDraw() { getSocket().emit('accept_draw'); }
+  function closeAnim(setClose: () => void) {
+    setClosing(true); setTimeout(() => { setClosing(false); setClose(); }, 120);
+  }
   function handleColorPick(color: string) {
-    setShowColorPicker(false);
-    if (pendingCardIndex !== null) { getSocket().emit('play_card', { cardIndex: pendingCardIndex, color }); setPendingCardIndex(null); }
+    setClosingPicker(true);
+    setTimeout(() => {
+      setClosingPicker(false); setShowColorPicker(false);
+      if (pendingCardIndex !== null) { getSocket().emit('play_card', { cardIndex: pendingCardIndex, color }); setPendingCardIndex(null); }
+      else getSocket().emit('choose_flip_color', { color });
+    }, 120);
   }
   function drawCard() { if (isMyTurn) { setShowPlayPrompt(false); getSocket().emit('draw_card'); } }
-  function declineDrawnCard() { setShowPlayPrompt(false); setDrawnCard(null); getSocket().emit('decline_play'); }
+  function declineDrawnCard() { setClosingPrompt(true); setTimeout(() => { setClosingPrompt(false); setShowPlayPrompt(false); setDrawnCard(null); getSocket().emit('decline_play'); }, 120); }
   function playDrawnCard() {
     if (!drawnCard) return;
-    setShowPlayPrompt(false); setDrawnCard(null);
-    const idx = myHand.length - 1;
-    if (idx >= 0) handlePlayCard(idx);
+    setClosingPrompt(true);
+    setTimeout(() => {
+      setClosingPrompt(false); setShowPlayPrompt(false); setDrawnCard(null);
+      const idx = myHand.length - 1;
+      if (idx >= 0) handlePlayCard(idx);
+    }, 120);
   }
   function callUno() { getSocket().emit('call_uno'); setShowUnoButton(false); }
   function leaveGame() { getSocket().emit('leave_room'); navigate('/lobby'); }
@@ -141,6 +174,8 @@ export default function Game() {
   function openAdminDialog(target: any) { setAdminTarget(target); setConfirmAction(null); }
   function doKick() { if (!adminTarget) return; getSocket().emit('kick_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
   function doBan() { if (!adminTarget) return; getSocket().emit('ban_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
+  function chooseSwapTarget(targetId: number) { getSocket().emit('choose_swap_target', { targetId }); setShowSwapPicker(false); }
+  function drawWheelCard() { getSocket().emit('draw_wheel_card'); }
 
   const colorDot = (c: string | null) => {
     if (!c) return null;
@@ -170,7 +205,7 @@ export default function Game() {
   if (gameOver) return (
     <div className="kicked-overlay">
       <div className="kicked-dialog">
-        <h2>🎉 游戏结束！</h2>
+        <h2><md-icon style={{ fontSize: 24, verticalAlign: 'middle', marginRight: 6 }}>celebration</md-icon> 游戏结束！</h2>
         <div style={{ textAlign: 'left', margin: '16px 0' }}>
           {rankings.map((r, i) => (
             <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #333', fontSize: 15 }}>
@@ -207,7 +242,7 @@ export default function Game() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#aaa' }}>
             <span>方向: {direction === 1 ? '顺时针 →' : '逆时针 ←'}</span>
             {gameState.currentColor && <span>{colorDot(gameState.currentColor)} 当前颜色</span>}
-            {gameMode === 'flip' && <span style={{ fontWeight: 500, color: currentSuit === 'light' ? '#fff' : '#888' }}>◈ {currentSuit === 'light' ? '浅色面' : '深色面'}</span>}
+            {gameMode === 'flip' && <span><md-icon style={{ fontSize: 14, verticalAlign: 'middle', color: currentSuit === 'light' ? '#fff' : '#888' }}>{currentSuit === 'light' ? 'light_mode' : 'dark_mode'}</md-icon> {currentSuit === 'light' ? '浅色面' : '深色面'}</span>}
             <span>牌堆: {gameState.drawPileCount}张</span>
             {gameMode === 'flip' && (
               <md-outlined-button style={{ minWidth: 120, height: 28, fontSize: 11, padding: '0 8px' }}
@@ -242,14 +277,14 @@ export default function Game() {
       {/* Rank notification for eliminated player */}
       {gameState && me?.isOut && gameState.state !== 'finished' && (
         <div style={{ textAlign: 'center', padding: '6px 0', color: '#ffd54f', fontSize: 14, fontWeight: 500 }}>
-          🏆 你获得了第 {gameState.rankings.find(r => r.playerId === user?.id)?.rank || '?'} 名！观战中...
+          <md-icon style={{ fontSize: 16, verticalAlign: 'middle', color: '#ffd54f' }}>emoji_events</md-icon> 你获得了第 {gameState.rankings.find(r => r.playerId === user?.id)?.rank || '?'} 名！观战中...
         </div>
       )}
 
       {/* Spectator indicator */}
       {isSpectator && gameState && gameState.state !== 'finished' && (
         <div style={{ textAlign: 'center', padding: '4px 0', color: '#aaa', fontSize: 13, fontStyle: 'italic' }}>
-          🎥 观战模式
+          <md-icon style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>visibility</md-icon> 观战模式
         </div>
       )}
 
@@ -298,8 +333,8 @@ export default function Game() {
                 </md-filled-button>
               )}
               {showUnoButton && (
-                <md-filled-button onClick={callUno} style={{ minWidth: 120, fontSize: 18 }}>
-                  🗣️ UNO!
+                <md-filled-button onClick={callUno} style={{ minWidth: 120, fontSize: 16 }}>
+                  <md-icon slot="icon">voice_chat</md-icon> UNO!
                 </md-filled-button>
               )}
               {error && <div style={{ color: '#ef5350', fontSize: 13 }}>{error}</div>}
@@ -322,6 +357,10 @@ export default function Game() {
                   {gameMode === 'flip'
                     ? <md-filled-button style={{ width: '100%' }} onClick={() => setMode('flip')}>UNO Flip</md-filled-button>
                     : <md-outlined-button style={{ width: '100%' }} onClick={() => setMode('flip')}>UNO Flip</md-outlined-button>
+                  }
+                  {gameMode === 'no-mercy'
+                    ? <md-filled-button style={{ width: '100%' }} onClick={() => setMode('no-mercy')}>UNO No Mercy</md-filled-button>
+                    : <md-outlined-button style={{ width: '100%' }} onClick={() => setMode('no-mercy')}>UNO No Mercy</md-outlined-button>
                   }
                 </div>
                 <md-filled-button onClick={startGame} style={{ minWidth: 200, fontSize: 16, height: 48 }}>
@@ -353,7 +392,7 @@ export default function Game() {
 
       {/* Draw playable prompt */}
       {showPlayPrompt && drawnCard && (
-        <div className="color-picker-overlay">
+        <div className={`color-picker-overlay ${closingPrompt ? 'overlay-hidden' : ''}`}>
           <div className="color-picker-dialog" style={{ maxWidth: 360 }}>
             <h3 style={{ marginBottom: 12, fontWeight: 500, fontSize: 16 }}>抽到了可出的牌！</h3>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
@@ -370,7 +409,7 @@ export default function Game() {
 
       {/* Admin player info dialog */}
       {adminTarget && !confirmAction && (
-        <div className="color-picker-overlay" onClick={() => setAdminTarget(null)}>
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={() => closeAnim(() => setAdminTarget(null))}>
           <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, width: '90%', textAlign: 'left' }}>
             <h3 style={{ marginBottom: 16, textAlign: 'center' }}>玩家信息</h3>
             <div style={{ fontSize: 14, lineHeight: 2 }}>
@@ -392,7 +431,7 @@ export default function Game() {
 
       {/* Admin confirmation dialog */}
       {confirmAction && (
-        <div className="color-picker-overlay">
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`}>
           <div className="color-picker-dialog" style={{ maxWidth: 340 }}>
             <h3 style={{ marginBottom: 12 }}>确认操作</h3>
             <p style={{ color: '#ccc', fontSize: 14, marginBottom: 16 }}>
@@ -409,16 +448,76 @@ export default function Game() {
         </div>
       )}
 
+      {/* Swap notice */}
+      {swapNotice && (
+        <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'var(--md-sys-color-surface)', padding: '10px 20px', borderRadius: 10, boxShadow: 'var(--md-elevation-level3)', zIndex: 80, fontSize: 13, color: '#ffd54f', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <md-icon style={{ fontSize: 16 }}>swap_horiz</md-icon>
+          {swapNotice.type === 'swap'
+            ? `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 打出了7，与你交换了手牌`
+            : `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 打出了0，所有玩家将手牌交给了下家`}
+        </div>
+      )}
+
+      {/* 7-swap player picker */}
+      {showSwapPicker && (
+        <div className="color-picker-overlay">
+          <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, width: '90%' }}>
+            <h3 style={{ marginBottom: 16 }}>选择交换手牌的玩家</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              {gameState?.players.filter(p => !p.isOut && p.id !== user?.id).map(p => (
+                <div key={p.id} onClick={() => chooseSwapTarget(p.id)}
+                  style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{p.username}</span>
+                  <span style={{ fontSize: 13, color: '#aaa' }}>{p.cardCount} 张牌</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <md-outlined-button style={{ minWidth: 80 }} onClick={() => setShowSwapPicker(false)}>取消</md-outlined-button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Color wheel draw UI */}
+      {showWheelDraw && (
+        <div className="color-picker-overlay">
+          <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 style={{ marginBottom: 12 }}>颜色轮盘</h3>
+            <p style={{ color: '#ccc', fontSize: 13, marginBottom: 16 }}>连续抽牌，直到抽到所选颜色的牌（万能牌无效）</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <md-filled-button style={{ minWidth: 140 }} onClick={drawWheelCard}>
+                <md-icon slot="icon">style</md-icon>
+                抽一张牌
+              </md-filled-button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Color picker */}
       {showColorPicker && (
-        <div className="color-picker-overlay" onClick={() => setShowColorPicker(false)}>
+        <div className={`color-picker-overlay ${closingPicker ? 'overlay-hidden' : ''}`} onClick={() => { setClosingPicker(true); setTimeout(() => { setClosingPicker(false); setShowColorPicker(false); }, 120); }}>
           <div className="color-picker-dialog" onClick={(e) => e.stopPropagation()}>
             <h3>选择颜色</h3>
             <div className="color-options">
-              <div className="color-option red" onClick={() => handleColorPick('red')} />
-              <div className="color-option yellow" onClick={() => handleColorPick('yellow')} />
-              <div className="color-option green" onClick={() => handleColorPick('green')} />
-              <div className="color-option blue" onClick={() => handleColorPick('blue')} />
+              {gameMode === 'flip' && currentSuit === 'dark' ? (
+                <>
+                  <div className="color-option" style={{ background: '#ff6d00' }} onClick={() => handleColorPick('orange')} />
+                  <div className="color-option" style={{ background: '#aa00ff' }} onClick={() => handleColorPick('purple')} />
+                  <div className="color-option" style={{ background: '#e91e88' }} onClick={() => handleColorPick('pink')} />
+                  <div className="color-option" style={{ background: '#00bcd4' }} onClick={() => handleColorPick('teal')} />
+                </>
+              ) : (
+                <>
+                  <div className="color-option red" onClick={() => handleColorPick('red')} />
+                  <div className="color-option yellow" onClick={() => handleColorPick('yellow')} />
+                  <div className="color-option green" onClick={() => handleColorPick('green')} />
+                  <div className="color-option blue" onClick={() => handleColorPick('blue')} />
+                </>
+              )}
             </div>
           </div>
         </div>

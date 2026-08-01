@@ -50,5 +50,7 @@ insertSetting.run('max_players', '4');
 insertSetting.run('turn_timeout', '30');
 insertSetting.run('uno_penalty', '2');
 insertSetting.run('allow_registration', 'true');
+insertSetting.run('announcement', '');
+insertSetting.run('announcement_version', '0');
 
 export default db;

@@ -11,10 +11,16 @@ function getCardDisplay(card: CardType) {
     case 'skip': return '⊘';
     case 'reverse': return '⟳';
     case 'draw2': return '+2';
+    case 'draw4': return '+4';
     case 'draw1': return '+1';
     case 'draw5': return '+5';
     case 'wild2': return '+2';
     case 'wild4': return '+4';
+    case 'wild_rev4': return '⟲+4';
+    case 'wild6': return '+6';
+    case 'wild10': return '+10';
+    case 'discard_all': return 'DISCARD';
+    case 'wild_wheel': return 'COLOR';
     case 'wild': return '★';
     case 'flip': return '⟷';
   }
