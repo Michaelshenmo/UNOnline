@@ -2,6 +2,7 @@ export interface User {
   id: number;
   username: string;
   nickname: string;
+  email?: string | null;
   role: 'player' | 'admin';
   status?: 'normal' | 'banned';
 }
@@ -63,4 +64,12 @@ export interface SystemSettings {
   turn_timeout: string;
   uno_penalty: string;
   allow_registration: string;
+  announcement?: string;
+  announcement_version?: string;
+  email_verification?: string;
+  smtp_host?: string;
+  smtp_port?: string;
+  smtp_user?: string;
+  smtp_password?: string;
+  smtp_from?: string;
 }

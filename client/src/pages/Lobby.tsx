@@ -11,12 +11,14 @@ export default function Lobby() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<{ id: number; nickname?: string }[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
-  const [adminTab, setAdminTab] = useState<'users' | 'settings'>('users');
+  const [adminTab, setAdminTab] = useState<'users' | 'settings' | 'email'>('users');
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [editSettings, setEditSettings] = useState<Record<string, string>>({ allow_registration: 'true' });
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [emailMsg, setEmailMsg] = useState('');
+  const [emailMsgSuccess, setEmailMsgSuccess] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createError, setCreateError] = useState('');
   const [announcement, setAnnouncement] = useState('');
@@ -32,10 +34,16 @@ export default function Lobby() {
   const cuUsernameRef = useRef<any>(null);
   const cuPasswordRef = useRef<any>(null);
   const cuNicknameRef = useRef<any>(null);
+  const cuEmailRef = useRef<any>(null);
   const cuRoleRef = useRef<any>(null);
   const maxPlayersRef = useRef<any>(null);
   const turnTimeoutRef = useRef<any>(null);
   const unoPenaltyRef = useRef<any>(null);
+  const smtpHostRef = useRef<any>(null);
+  const smtpPortRef = useRef<any>(null);
+  const smtpUserRef = useRef<any>(null);
+  const smtpPasswordRef = useRef<any>(null);
+  const smtpFromRef = useRef<any>(null);
   const createUserDialogRef = useRef<any>(null);
   const successTimerRef = useRef<any>(null);
   const profileNicknameRef = useRef<any>(null);
@@ -44,6 +52,7 @@ export default function Lobby() {
   const profilePwdConfirmRef = useRef<any>(null);
   const adminEditUsernameRef = useRef<any>(null);
   const adminEditNicknameRef = useRef<any>(null);
+  const adminEditEmailRef = useRef<any>(null);
   const adminEditRoleRef = useRef<any>(null);
   const adminEditStatusRef = useRef<any>(null);
   const adminEditPwdRef = useRef<any>(null);
@@ -108,6 +117,66 @@ export default function Lobby() {
     setEditSettings(prev => ({ ...prev, allow_registration: prev.allow_registration === 'true' ? 'false' : 'true' }));
   }
 
+  async function toggleEmailVerification() {
+    const target = editSettings.email_verification === 'true' ? 'false' : 'true';
+    if (target === 'true') {
+      // Test SMTP first
+      const config = {
+        smtp_host: editSettings.smtp_host || '',
+        smtp_port: editSettings.smtp_port || '465',
+        smtp_user: editSettings.smtp_user || '',
+        smtp_password: editSettings.smtp_password || '',
+      };
+      setEmailMsg('正在测试 SMTP 连接...'); setEmailMsgSuccess(false);
+      try {
+        await api.smtpTest(config);
+      } catch (err: any) {
+        setEmailMsg('SMTP 连接失败，无法启用：' + err.message); setEmailMsgSuccess(false);
+        return;
+      }
+    }
+    setEditSettings(prev => ({ ...prev, email_verification: target }));
+    try {
+      await api.updateSettings({ email_verification: target });
+      setEmailMsg(target === 'true' ? 'SMTP 连接成功，邮箱验证已启用' : '邮箱验证已关闭');
+      setEmailMsgSuccess(true);
+    } catch (err: any) {
+      setEmailMsg('保存失败：' + err.message); setEmailMsgSuccess(false);
+    }
+  }
+
+  async function handleSaveEmailSettings() {
+    setEmailMsg(''); setEmailMsgSuccess(false);
+    try {
+      await api.updateSettings({
+        smtp_host: editSettings.smtp_host || '',
+        smtp_port: editSettings.smtp_port || '465',
+        smtp_user: editSettings.smtp_user || '',
+        smtp_password: editSettings.smtp_password || '',
+        smtp_from: editSettings.smtp_from || '',
+      });
+      setEmailMsg('SMTP 配置已保存'); setEmailMsgSuccess(true);
+    } catch (err: any) {
+      setEmailMsg('保存失败：' + err.message); setEmailMsgSuccess(false);
+    }
+  }
+
+  async function handleSendTestEmail() {
+    setEmailMsg('正在发送测试邮件...'); setEmailMsgSuccess(false);
+    try {
+      const res = await api.smtpSendTest({
+        smtp_host: editSettings.smtp_host || '',
+        smtp_port: editSettings.smtp_port || '465',
+        smtp_user: editSettings.smtp_user || '',
+        smtp_password: editSettings.smtp_password || '',
+        smtp_from: editSettings.smtp_from || '',
+      });
+      setEmailMsg(res.message); setEmailMsgSuccess(true);
+    } catch (err: any) {
+      setEmailMsg('发送失败：' + err.message); setEmailMsgSuccess(false);
+    }
+  }
+
   useEffect(() => {
     customElements.whenDefined('md-switch').then(() => {
       if (regSwitchRef.current) {
@@ -154,6 +223,21 @@ export default function Lobby() {
     if (adminEditTarget) el.showModal();
     else el.close();
   }, [adminEditTarget]);
+
+  useEffect(() => {
+    if (adminTab !== 'email') return;
+    const fieldRefs: any = { smtp_host: smtpHostRef, smtp_port: smtpPortRef, smtp_user: smtpUserRef, smtp_password: smtpPasswordRef, smtp_from: smtpFromRef };
+    const pairs = Object.entries(fieldRefs).map(([key, ref]: any) => [ref.current, key]);
+    const handlers = pairs.map(([el, key]: any) => {
+      if (!el) return null;
+      const val = editSettings[key] || '';
+      el.value = val;
+      const handler = (e: any) => setEditSettings(prev => ({ ...prev, [key]: e.target.value }));
+      el.addEventListener('input', handler);
+      return { el, handler };
+    });
+    return () => handlers.forEach((h: any) => { if (h) h.el.removeEventListener('input', h.handler); });
+  }, [adminTab]);
 
   useEffect(() => {
     const el = adminEditDialogRef.current;
@@ -256,12 +340,13 @@ export default function Lobby() {
     setAdminEditError('');
     const newUsername = adminEditUsernameRef.current?.value?.trim();
     const newNickname = adminEditNicknameRef.current?.value?.trim();
+    const newEmail = adminEditEmailRef.current?.value?.trim();
     const newRole = adminEditRoleRef.current?.value;
     const newStatus = adminEditStatusRef.current?.value;
     const newPwd = adminEditPwdRef.current?.value;
     const confirmPwd = adminEditPwdConfirmRef.current?.value;
     try {
-      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, role: newRole, status: newStatus });
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus });
       if (newPwd) {
         if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
@@ -277,10 +362,11 @@ export default function Lobby() {
     const username = cuUsernameRef.current?.value?.trim();
     const password = cuPasswordRef.current?.value;
     const nickname = cuNicknameRef.current?.value?.trim();
+    const email = cuEmailRef.current?.value?.trim();
     const role = cuRoleRef.current?.value || 'player';
     if (!username || !password) { setCreateError('请填写用户名和密码'); return; }
     try {
-      await api.createUser(username, password, nickname, role);
+      await api.createUser(username, password, nickname, role, email);
       setShowCreateUser(false);
       loadAdminData();
     } catch (err: any) {
@@ -326,6 +412,10 @@ export default function Lobby() {
               <md-icon slot="start" style={{ color: adminTab === 'settings' ? '#e53935' : '#aaa' }}>settings</md-icon>
               <div slot="headline" style={{ color: adminTab === 'settings' ? '#e53935' : '#ccc', fontWeight: adminTab === 'settings' ? 500 : 400 }}>系统设置</div>
             </md-list-item>
+            <md-list-item type="button" onClick={() => setAdminTab('email')}>
+              <md-icon slot="start" style={{ color: adminTab === 'email' ? '#e53935' : '#aaa' }}>alternate_email</md-icon>
+              <div slot="headline" style={{ color: adminTab === 'email' ? '#e53935' : '#ccc', fontWeight: adminTab === 'email' ? 500 : 400 }}>邮箱配置</div>
+            </md-list-item>
           </md-list>
 
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -338,6 +428,7 @@ export default function Lobby() {
                     if (cuUsernameRef.current) cuUsernameRef.current.value = '';
                     if (cuPasswordRef.current) cuPasswordRef.current.value = '';
                     if (cuNicknameRef.current) cuNicknameRef.current.value = '';
+                    if (cuEmailRef.current) cuEmailRef.current.value = '';
                     if (cuRoleRef.current) cuRoleRef.current.value = 'player';
                   }}>
                     <md-icon slot="icon">person_add</md-icon>
@@ -346,7 +437,7 @@ export default function Lobby() {
                 </div>
                 <table>
                   <thead>
-                    <tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>注册时间</th><th>操作</th></tr>
+                    <tr><th>ID</th><th>用户名</th><th>昵称</th><th>邮箱</th><th>角色</th><th>注册时间</th><th>操作</th></tr>
                   </thead>
                   <tbody>
                     {adminUsers.map(u => (
@@ -354,6 +445,7 @@ export default function Lobby() {
                         <td>{u.id}</td>
                     <td>{u.username} {u.status === 'banned' ? <span style={{ background: '#d32f2f', color: '#fff', fontSize: 10, padding: '1px 6px', borderRadius: 4, marginLeft: 4 }}>被封禁</span> : ''}</td>
                     <td>{u.nickname}</td>
+                    <td style={{ fontSize: 12, color: '#aaa' }}>{u.email || '-'}</td>
                         <td>
                           <select value={u.role} onChange={(e) => handleRoleChange(u.id, e.target.value)} disabled={u.id === user?.id}
                             style={{ background: '#1e1e3a', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px', fontSize: 13, opacity: u.id === user?.id ? 0.5 : 1 }}>
@@ -368,6 +460,7 @@ export default function Lobby() {
                             setTimeout(() => {
                               if (adminEditUsernameRef.current) adminEditUsernameRef.current.value = u.username;
                               if (adminEditNicknameRef.current) adminEditNicknameRef.current.value = u.nickname || u.username;
+                              if (adminEditEmailRef.current) adminEditEmailRef.current.value = u.email || '';
                               if (adminEditRoleRef.current) adminEditRoleRef.current.value = u.role;
                               if (adminEditStatusRef.current) adminEditStatusRef.current.value = u.status || 'normal';
                               if (adminEditPwdRef.current) adminEditPwdRef.current.value = '';
@@ -381,7 +474,7 @@ export default function Lobby() {
                   </tbody>
                 </table>
               </div>
-            ) : (
+            ) : adminTab === 'settings' ? (
               <div className="section-card">
                 <h3 className="section-title"><md-icon>settings</md-icon> 系统设置</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 400 }}>
@@ -407,6 +500,39 @@ export default function Lobby() {
                   <div>
                     <md-filled-button style={{ minWidth: 200 }} onClick={handleSaveSettings}>保存设置</md-filled-button>
                   </div>
+                </div>
+              </div>
+            ) : (
+              <div className="section-card">
+                <h3 className="section-title"><md-icon>alternate_email</md-icon> 邮箱配置</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 400 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={toggleEmailVerification}>
+                    <span style={{ fontSize: 14, color: '#ccc' }}>邮箱验证</span>
+                    <md-switch selected={editSettings.email_verification === 'true' || undefined}></md-switch>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={smtpHostRef} label="SMTP 服务器" type="text"></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={smtpPortRef} label="SMTP 端口" type="number"></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={smtpUserRef} label="SMTP 用户名" type="text"></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={smtpPasswordRef} label="SMTP 密码" type="password"></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={smtpFromRef} label="发件人邮箱" type="text"></md-outlined-text-field>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <md-filled-button style={{ minWidth: 140 }} onClick={handleSaveEmailSettings}>保存 SMTP 配置</md-filled-button>
+                    <md-outlined-button style={{ minWidth: 120 }} onClick={handleSendTestEmail}>发送测试邮件</md-outlined-button>
+                  </div>
+                  {emailMsg && <div style={{ fontSize: 13, color: emailMsgSuccess ? '#43a047' : '#ef5350', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {emailMsgSuccess ? <md-icon style={{ fontSize: 15 }}>check_circle</md-icon> : <md-icon style={{ fontSize: 15 }}>error</md-icon>}
+                    {emailMsg}
+                  </div>}
                 </div>
               </div>
             )}
@@ -506,6 +632,7 @@ export default function Lobby() {
           <p style={{ color: '#aaa', fontSize: 13, marginBottom: 8 }}>UID: {adminEditTarget?.id}</p>
           <md-outlined-text-field ref={adminEditUsernameRef} label="用户名" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
           <md-outlined-text-field ref={adminEditNicknameRef} label="昵称" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+          <md-outlined-text-field ref={adminEditEmailRef} label="邮箱" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
           <md-outlined-select ref={adminEditRoleRef} value={adminEditTarget?.role || 'player'} style={{ marginBottom: 12 }} disabled={adminEditTarget?.id === user?.id || undefined}>
             <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
             <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>
@@ -535,6 +662,7 @@ export default function Lobby() {
           <md-outlined-text-field ref={cuUsernameRef} label="用户名" type="text" required></md-outlined-text-field>
           <md-outlined-text-field ref={cuPasswordRef} label="密码" type="password" required></md-outlined-text-field>
           <md-outlined-text-field ref={cuNicknameRef} label="昵称" type="text"></md-outlined-text-field>
+          <md-outlined-text-field ref={cuEmailRef} label="邮箱" type="text"></md-outlined-text-field>
           <md-outlined-select ref={cuRoleRef} value="player">
             <md-select-option value="player"><div slot="headline">玩家</div></md-select-option>
             <md-select-option value="admin"><div slot="headline">管理员</div></md-select-option>

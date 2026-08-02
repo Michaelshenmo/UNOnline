@@ -29,6 +29,11 @@ app.get('/api/rooms', (req, res) => {
   res.json(manager.getRooms());
 });
 
+app.get('/api/public-config', (req, res) => {
+  const ev = db.prepare("SELECT value FROM system_settings WHERE key = 'email_verification'").get();
+  res.json({ email_verification: ev?.value === 'true' });
+});
+
 app.get('/api/announcement', (req, res) => {
   const announcement = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement'").get();
   const version = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement_version'").get();

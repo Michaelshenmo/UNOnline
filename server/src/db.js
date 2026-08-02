@@ -21,6 +21,7 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     nickname TEXT,
+    email TEXT,
     role TEXT DEFAULT 'player',
     status TEXT DEFAULT 'normal',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -41,8 +42,9 @@ db.exec(`
   );
 `);
 
-// Migration: add status column if missing
+// Migrations
 try { db.exec('ALTER TABLE users ADD COLUMN status TEXT DEFAULT "normal"'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
 
 // Insert default settings
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
@@ -52,5 +54,11 @@ insertSetting.run('uno_penalty', '2');
 insertSetting.run('allow_registration', 'true');
 insertSetting.run('announcement', '');
 insertSetting.run('announcement_version', '0');
+insertSetting.run('email_verification', 'false');
+insertSetting.run('smtp_host', '');
+insertSetting.run('smtp_port', '465');
+insertSetting.run('smtp_user', '');
+insertSetting.run('smtp_password', '');
+insertSetting.run('smtp_from', '');
 
 export default db;

@@ -8,6 +8,7 @@ export default function Register() {
   const passwordRef = useRef<any>(null);
   const confirmRef = useRef<any>(null);
   const nicknameRef = useRef<any>(null);
+  const emailRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -20,11 +21,25 @@ export default function Register() {
     const password = passwordRef.current?.value;
     const confirm = confirmRef.current?.value;
     const nickname = nicknameRef.current?.value.trim();
+    const email = emailRef.current?.value.trim();
     if (!username || !password) { setError('请填写用户名和密码'); return; }
+    if (!email) { setError('请填写邮箱'); return; }
     if (password !== confirm) { setError('两次密码不一致'); return; }
     setLoading(true);
     try {
-      const data = await api.register(username, password, nickname || undefined);
+      const config = await api.getPublicConfig();
+      if (config.email_verification) {
+        if (!email) { setError('请填写邮箱'); setLoading(false); return; }
+        const check = await api.checkRegistration(username, email);
+        if (!check.available) {
+          setError(check.errors.join('；'));
+          setLoading(false);
+          return;
+        }
+        navigate('/verify', { state: { username, password, nickname, email } });
+        return;
+      }
+      const data = await api.register(username, password, nickname, email || undefined);
       login(data.token, data.user);
       navigate('/lobby');
     } catch (err: any) {
@@ -44,7 +59,10 @@ export default function Register() {
             <md-outlined-text-field ref={usernameRef} label="用户名" type="text" required name="username" autocomplete="username" onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
           </div>
           <div className="form-group">
-            <md-outlined-text-field ref={nicknameRef} label="昵称（可选）" type="text" name="nickname" autocomplete="nickname" onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>
+            <md-outlined-text-field ref={nicknameRef} label="昵称（可选）" type="text" name="nickname" autocomplete="nickname"></md-outlined-text-field>
+          </div>
+          <div className="form-group">
+            <md-outlined-text-field ref={emailRef} label="邮箱" type="email" name="email" autocomplete="email" required></md-outlined-text-field>
           </div>
           <div className="form-group">
             <md-outlined-text-field ref={passwordRef} label="密码" type="password" required name="new-password" autocomplete="new-password" onKeyDown={(e: any) => { if (e.key === 'Enter') handleSubmit(e); }}></md-outlined-text-field>

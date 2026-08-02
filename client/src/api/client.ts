@@ -15,10 +15,38 @@ async function request(path: string, options: RequestInit = {}) {
 }
 
 export const api = {
-  register(username: string, password: string, nickname?: string) {
+  register(username: string, password: string, nickname?: string, email?: string, code?: string) {
     return request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password, nickname }),
+      body: JSON.stringify({ username, password, nickname, email, code }),
+    });
+  },
+
+  checkRegistration(username: string, email: string) {
+    return request('/auth/check', {
+      method: 'POST',
+      body: JSON.stringify({ username, email }),
+    });
+  },
+
+  sendVerificationCode(email: string) {
+    return request('/auth/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  smtpTest(config: Record<string, string>) {
+    return request('/admin/smtp/test', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  smtpSendTest(config: Record<string, string>) {
+    return request('/admin/smtp/send-test', {
+      method: 'POST',
+      body: JSON.stringify(config),
     });
   },
 
@@ -68,10 +96,10 @@ export const api = {
     });
   },
 
-  createUser(username: string, password: string, nickname: string, role: string) {
+  createUser(username: string, password: string, nickname: string, role: string, email?: string) {
     return request('/admin/users', {
       method: 'POST',
-      body: JSON.stringify({ username, password, nickname, role }),
+      body: JSON.stringify({ username, password, nickname, role, email }),
     });
   },
 
@@ -96,7 +124,7 @@ export const api = {
     });
   },
 
-  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; role?: string; status?: string }) {
+  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; email?: string; role?: string; status?: string }) {
     return request(`/admin/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -105,5 +133,9 @@ export const api = {
 
   getAnnouncement() {
     return request('/announcement');
+  },
+
+  getPublicConfig() {
+    return request('/public-config');
   },
 };

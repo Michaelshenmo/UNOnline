@@ -2,11 +2,12 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
 import { authenticateToken, requireAdmin, generateToken } from '../middleware/auth.js';
+import { testSmtp, sendTestMail } from '../mail.js';
 
 const router = Router();
 
 router.get('/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, nickname, role, status, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, nickname, email, role, status, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -40,12 +41,18 @@ router.get('/settings', authenticateToken, requireAdmin, (req, res) => {
 });
 
 router.put('/settings', authenticateToken, requireAdmin, (req, res) => {
-  const { max_players, turn_timeout, uno_penalty, allow_registration, announcement } = req.body;
+  const { max_players, turn_timeout, uno_penalty, allow_registration, announcement, email_verification, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from } = req.body;
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   if (max_players) upsert.run('max_players', String(Math.min(10, Math.max(2, parseInt(max_players)))));
   if (turn_timeout) upsert.run('turn_timeout', String(Math.max(10, parseInt(turn_timeout))));
   if (uno_penalty !== undefined) upsert.run('uno_penalty', String(Math.max(0, parseInt(uno_penalty))));
   if (allow_registration !== undefined) upsert.run('allow_registration', (allow_registration === true || allow_registration === 'true') ? 'true' : 'false');
+  if (email_verification !== undefined) upsert.run('email_verification', (email_verification === true || email_verification === 'true') ? 'true' : 'false');
+  if (smtp_host !== undefined) upsert.run('smtp_host', String(smtp_host));
+  if (smtp_port !== undefined) upsert.run('smtp_port', String(parseInt(smtp_port) || 465));
+  if (smtp_user !== undefined) upsert.run('smtp_user', String(smtp_user));
+  if (smtp_password !== undefined) upsert.run('smtp_password', String(smtp_password));
+  if (smtp_from !== undefined) upsert.run('smtp_from', String(smtp_from));
   if (announcement !== undefined) {
     const old = db.prepare("SELECT value FROM system_settings WHERE key = 'announcement'").get()?.value || '';
     if (announcement !== old) {
@@ -57,8 +64,36 @@ router.put('/settings', authenticateToken, requireAdmin, (req, res) => {
   res.json({ message: '设置已更新' });
 });
 
+router.post('/smtp/test', authenticateToken, requireAdmin, async (req, res) => {
+  const { smtp_host, smtp_port, smtp_user, smtp_password } = req.body;
+  try {
+    await testSmtp({
+      host: smtp_host, port: parseInt(smtp_port) || 465,
+      user: smtp_user, password: smtp_password,
+    });
+    res.json({ message: 'SMTP 连接成功' });
+  } catch (e) {
+    res.status(400).json({ error: 'SMTP 连接失败：' + (e.message || '未知错误') });
+  }
+});
+
+router.post('/smtp/send-test', authenticateToken, requireAdmin, async (req, res) => {
+  const { smtp_host, smtp_port, smtp_user, smtp_password, smtp_from } = req.body;
+  const admin = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+  if (!admin || !admin.email) return res.status(400).json({ error: '当前管理员未绑定邮箱，无法发送测试邮件' });
+  try {
+    await sendTestMail({
+      host: smtp_host, port: parseInt(smtp_port) || 465,
+      user: smtp_user, password: smtp_password, from: smtp_from,
+    }, admin.email);
+    res.json({ message: `邮件已发送给${admin.email}` });
+  } catch (e) {
+    res.status(400).json({ error: '发送失败：' + (e.message || '未知错误') });
+  }
+});
+
 router.post('/users', authenticateToken, requireAdmin, (req, res) => {
-  const { username, password, nickname, role } = req.body;
+  const { username, password, nickname, email, role } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
@@ -73,11 +108,15 @@ router.post('/users', authenticateToken, requireAdmin, (req, res) => {
   if (existing) {
     return res.status(400).json({ error: '用户名已存在' });
   }
+  if (email) {
+    const emailExists = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+    if (emailExists) return res.status(400).json({ error: '该邮箱已被使用' });
+  }
 
   const hash = bcrypt.hashSync(password, 10);
   const userRole = role === 'admin' ? 'admin' : 'player';
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run(username, hash, nickname || username, userRole);
-  res.json({ message: '用户已创建', user: { id: result.lastInsertRowid, username, nickname: nickname || username, role: userRole } });
+  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role) VALUES (?, ?, ?, ?, ?)').run(username, hash, nickname || username, email || null, userRole);
+  res.json({ message: '用户已创建', user: { id: result.lastInsertRowid, username, nickname: nickname || username, email: email || null, role: userRole } });
 });
 
 router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) => {
@@ -98,7 +137,7 @@ router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) =>
 });
 
 router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
-  const { username, nickname, role, status } = req.body;
+  const { username, nickname, email, role, status } = req.body;
   const targetId = parseInt(req.params.id);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId);
   if (!user) return res.status(404).json({ error: '用户不存在' });
@@ -109,19 +148,26 @@ router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
     if (existing) return res.status(400).json({ error: '用户名已存在' });
   }
 
+  if (email !== undefined && email && email !== user.email) {
+    const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?').get(email, targetId);
+    if (existing) return res.status(400).json({ error: '该邮箱已被其他账号使用' });
+  }
+
   // Admin cannot change own status or role
   if (targetId === req.user.id) {
     const newUsername = username || user.username;
     const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
-    db.prepare('UPDATE users SET username = ?, nickname = ? WHERE id = ?').run(newUsername, newNickname, targetId);
+    const newEmail = email !== undefined ? (email || null) : user.email;
+    db.prepare('UPDATE users SET username = ?, nickname = ?, email = ? WHERE id = ?').run(newUsername, newNickname, newEmail, targetId);
     return res.json({ message: '用户资料已更新' });
   }
 
   const newUsername = username || user.username;
   const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
+  const newEmail = email !== undefined ? (email || null) : user.email;
   const newRole = role || user.role;
   const newStatus = status || user.status;
-  db.prepare('UPDATE users SET username = ?, nickname = ?, role = ?, status = ? WHERE id = ?').run(newUsername, newNickname, newRole, newStatus, targetId);
+  db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, role = ?, status = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newRole, newStatus, targetId);
   res.json({ message: '用户资料已更新' });
 });
 

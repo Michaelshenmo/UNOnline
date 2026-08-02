@@ -2,11 +2,57 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
+import { generateCode, verifyCode, canSend, markSent } from '../verification.js';
+import { sendMail } from '../mail.js';
 
 const router = Router();
 
-router.post('/register', (req, res) => {
-  const { username, password, nickname } = req.body;
+function emailVerificationEnabled() {
+  const row = db.prepare("SELECT value FROM system_settings WHERE key = 'email_verification'").get();
+  return row && row.value === 'true';
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+router.post('/check', (req, res) => {
+  const { username, email } = req.body;
+  const errors = [];
+  if (username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) errors.push('用户名已存在');
+  }
+  if (email) {
+    const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+    if (existing) errors.push('该邮箱已注册');
+  }
+  res.json({ available: errors.length === 0, errors });
+});
+
+router.post('/send-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: '请输入有效的邮箱' });
+  }
+  const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+  if (existing) {
+    return res.status(400).json({ error: '该邮箱已注册' });
+  }
+  const cooldown = canSend(email);
+  if (!cooldown.ok) {
+    return res.status(429).json({ error: `发送过于频繁，请 ${cooldown.remaining} 秒后重试` });
+  }
+  try {
+    const code = generateCode(email);
+    await sendMail(email, 'UNO Online 注册验证码', `<p style="font-family:sans-serif">您的注册验证码是：<strong style="font-size:24px">${code}</strong></p><p>验证码 10 分钟内有效。</p>`);
+    markSent(email);
+    res.json({ message: '验证码已发送' });
+  } catch (e) {
+    res.status(500).json({ error: '邮件发送失败：' + (e.message || '未知错误') });
+  }
+});
+
+router.post('/register', async (req, res) => {
+  const { username, password, nickname, email, code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
@@ -27,14 +73,31 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: '用户名已存在' });
   }
 
+  const finalEmail = (email || '').trim();
+  if (!finalEmail || !EMAIL_RE.test(finalEmail)) {
+    return res.status(400).json({ error: '请输入有效的邮箱' });
+  }
+  const emailExists = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(finalEmail);
+  if (emailExists) {
+    return res.status(400).json({ error: '该邮箱已注册' });
+  }
+  if (emailVerificationEnabled()) {
+    if (!finalEmail) {
+      return res.status(400).json({ error: '请输入邮箱' });
+    }
+    if (!code || !verifyCode(finalEmail, code)) {
+      return res.status(400).json({ error: '验证码错误或已过期' });
+    }
+  }
+
   const hash = bcrypt.hashSync(password, 10);
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   const role = userCount === 0 ? 'admin' : 'player';
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run(username, hash, nickname || username, role);
+  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role) VALUES (?, ?, ?, ?, ?)').run(username, hash, nickname || username, finalEmail || null, role);
   const user = { id: result.lastInsertRowid, username, nickname: nickname || username, role };
   const token = generateToken(user);
 
-  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role, status: 'normal' } });
+  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role, status: 'normal', email: finalEmail || null } });
 });
 
 router.post('/login', (req, res) => {
@@ -49,11 +112,11 @@ router.post('/login', (req, res) => {
   }
 
   const token = generateToken(user);
-  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status } });
+  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status, email: user.email || null } });
 });
 
 router.get('/profile', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, email, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
   res.json(user);
 });

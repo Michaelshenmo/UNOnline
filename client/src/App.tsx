@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Verify from './pages/Verify';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 
@@ -17,6 +18,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/lobby" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/lobby" replace /> : <Register />} />
+      <Route path="/verify" element={user ? <Navigate to="/lobby" replace /> : <Verify />} />
       <Route path="/lobby" element={<ProtectedRoute><Lobby /></ProtectedRoute>} />
       <Route path="/game/:roomId" element={<ProtectedRoute><Game /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? '/lobby' : '/login'} replace />} />
