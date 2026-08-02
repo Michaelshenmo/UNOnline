@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
@@ -8,8 +8,13 @@ export default function Login() {
   const passwordRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [allowReg, setAllowReg] = useState(true);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.getPublicConfig().then(c => setAllowReg(c.allow_registration)).catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +54,7 @@ export default function Login() {
           </div>
         </form>
         <div className="form-footer">
-          还没有账号？ <Link to="/register">立即注册</Link>
+          {allowReg && <>还没有账号？ <Link to="/register">立即注册</Link></>}
         </div>
       </div>
     </div>

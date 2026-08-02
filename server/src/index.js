@@ -31,7 +31,8 @@ app.get('/api/rooms', (req, res) => {
 
 app.get('/api/public-config', (req, res) => {
   const ev = db.prepare("SELECT value FROM system_settings WHERE key = 'email_verification'").get();
-  res.json({ email_verification: ev?.value === 'true' });
+  const ar = db.prepare("SELECT value FROM system_settings WHERE key = 'allow_registration'").get();
+  res.json({ email_verification: ev?.value === 'true', allow_registration: ar?.value !== 'false' });
 });
 
 app.get('/api/announcement', (req, res) => {

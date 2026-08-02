@@ -607,6 +607,7 @@ export default function Lobby() {
           <div className="md-dialog-content">
             <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, marginBottom: 8 }}>
               <div style={{ fontSize: 13, color: '#aaa' }}>UID: {user?.id}</div>
+              <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>邮箱: {user?.email || '未绑定'}</div>
               <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>用户名: {user?.username}</div>
             </div>
             <md-outlined-text-field ref={profileNicknameRef} label="昵称" type="text" value={user?.nickname || user?.username}></md-outlined-text-field>
