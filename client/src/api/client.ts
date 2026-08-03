@@ -36,6 +36,20 @@ export const api = {
     });
   },
 
+  forgotSendCode(email: string) {
+    return request('/auth/forgot/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  forgotReset(email: string, code: string, new_password: string) {
+    return request('/auth/forgot/reset', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, new_password }),
+    });
+  },
+
   smtpTest(config: Record<string, string>) {
     return request('/admin/smtp/test', {
       method: 'POST',

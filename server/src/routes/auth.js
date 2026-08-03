@@ -153,4 +153,41 @@ router.put('/profile', authenticateToken, (req, res) => {
   res.json({ message: '资料已更新' });
 });
 
+router.post('/forgot/send-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: '请输入有效的邮箱' });
+  }
+  const user = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+  if (!user) {
+    return res.status(400).json({ error: '该邮箱未注册' });
+  }
+  const cooldown = canSend(email);
+  if (!cooldown.ok) {
+    return res.status(429).json({ error: `发送过于频繁，请 ${cooldown.remaining} 秒后重试` });
+  }
+  try {
+    const code = generateCode(email, 'forgot');
+    await sendMail(email, 'UNO Online 重置密码验证码', `<p style="font-family:sans-serif">您的重置密码验证码是：<strong style="font-size:24px">${code}</strong></p><p>验证码 10 分钟内有效。</p>`);
+    markSent(email);
+    res.json({ message: '验证码已发送' });
+  } catch (e) {
+    res.status(500).json({ error: '邮件发送失败：' + (e.message || '未知错误') });
+  }
+});
+
+router.post('/forgot/reset', (req, res) => {
+  const { email, code, new_password } = req.body;
+  if (!email || !new_password) return res.status(400).json({ error: '请填写邮箱和新密码' });
+  if (new_password.length < 6) return res.status(400).json({ error: '新密码至少6个字符' });
+  const user = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+  if (!user) return res.status(400).json({ error: '该邮箱未注册' });
+  if (!verifyCode(email, code, 'forgot')) {
+    return res.status(400).json({ error: '验证码错误或已过期' });
+  }
+  const hash = bcrypt.hashSync(new_password, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+  res.json({ message: '密码已重置，请使用新密码登录' });
+});
+
 export default router;

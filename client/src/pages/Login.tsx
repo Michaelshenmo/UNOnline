@@ -56,6 +56,9 @@ export default function Login() {
         <div className="form-footer">
           {allowReg && <>还没有账号？ <Link to="/register">立即注册</Link></>}
         </div>
+        <div className="form-footer">
+          忘记了密码？ <Link to="/forgot-password">立即重置</Link>
+        </div>
       </div>
     </div>
   );

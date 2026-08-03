@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Verify from './pages/Verify';
+import ForgotPassword from './pages/ForgotPassword';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 
@@ -19,6 +20,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/lobby" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/lobby" replace /> : <Register />} />
       <Route path="/verify" element={user ? <Navigate to="/lobby" replace /> : <Verify />} />
+      <Route path="/forgot-password" element={user ? <Navigate to="/lobby" replace /> : <ForgotPassword />} />
       <Route path="/lobby" element={<ProtectedRoute><Lobby /></ProtectedRoute>} />
       <Route path="/game/:roomId" element={<ProtectedRoute><Game /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? '/lobby' : '/login'} replace />} />

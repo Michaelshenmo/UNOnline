@@ -17,20 +17,20 @@ export function markSent(email) {
   lastSent.set(email.toLowerCase(), Date.now());
 }
 
-export function generateCode(email) {
+export function generateCode(email, purpose = 'register') {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  codes.set(email.toLowerCase(), { code, expiresAt: Date.now() + CODE_EXPIRY });
+  codes.set(email.toLowerCase(), { code, purpose, expiresAt: Date.now() + CODE_EXPIRY });
   return code;
 }
 
-export function verifyCode(email, code) {
+export function verifyCode(email, code, purpose = 'register') {
   const entry = codes.get(email.toLowerCase());
   if (!entry) return false;
   if (Date.now() > entry.expiresAt) {
     codes.delete(email.toLowerCase());
     return false;
   }
-  if (entry.code !== code) return false;
+  if (entry.purpose !== purpose || entry.code !== code) return false;
   codes.delete(email.toLowerCase());
   return true;
 }
