@@ -28,7 +28,7 @@ export default function ForgotPassword() {
       setSuccess('验证码已发送到您的邮箱');
       setCooldown(60);
     } catch (err: any) {
-      setError(err.message + '。请联系管理员');
+      setError(err.status === 500 ? err.message + '。请联系管理员' : err.message);
       const match = err.message.match(/请 (\d+) 秒后重试/);
       if (match) setCooldown(parseInt(match[1]));
     }
@@ -50,7 +50,7 @@ export default function ForgotPassword() {
       await api.forgotReset(email, code, newPwd);
       setSuccess('密码已重置，请使用新密码登录');
     } catch (err: any) {
-      setError(err.message + '。请联系管理员');
+      setError(err.status === 500 ? err.message + '。请联系管理员' : err.message);
     } finally {
       setLoading(false);
     }

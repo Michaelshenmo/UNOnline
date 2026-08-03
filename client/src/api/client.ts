@@ -10,7 +10,11 @@ async function request(path: string, options: RequestInit = {}) {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || '请求失败');
+  if (!res.ok) {
+    const err: any = new Error(data.error || '请求失败');
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
