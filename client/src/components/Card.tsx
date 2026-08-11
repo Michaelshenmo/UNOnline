@@ -19,8 +19,8 @@ function getCardDisplay(card: CardType) {
     case 'wild_rev4': return '⟲+4';
     case 'wild6': return '+6';
     case 'wild10': return '+10';
-    case 'discard_all': return 'DISCARD';
-    case 'wild_wheel': return 'COLOR';
+    case 'discard_all': return '⌫';
+    case 'wild_wheel': return '◎';
     case 'wild': return '★';
     case 'flip': return '⟷';
   }

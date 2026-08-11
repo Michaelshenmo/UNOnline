@@ -130,6 +130,12 @@ export class NoMercyEngine {
 
     const isWild = ['wild', 'wild_rev4', 'wild6', 'wild10', 'wild_wheel'].includes(card.type);
 
+    // 7-swap: wait for player selection before executing the play
+    if (card.type === 'number' && card.value === '7') {
+      this.pendingAction = { type: 'swap', playerId, cardIndex, color: card.color };
+      return { success: true, needsSwap: true };
+    }
+
     // Wild cards need color choice
     if (isWild) {
       if (!chosenColor || !COLORS.includes(chosenColor)) {
@@ -145,12 +151,6 @@ export class NoMercyEngine {
     this.lastAction = { type: 'play', playerId, card };
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
 
-    // 7-swap (number 7)
-    if (card.type === 'number' && card.value === '7') {
-      this.pendingAction = { type: 'swap', playerId };
-      return { success: true, needsSwap: true };
-    }
-
     // 0-pass (number 0)
     if (card.type === 'number' && card.value === '0') {
       this.doPassHands(playerId);
@@ -162,11 +162,16 @@ export class NoMercyEngine {
 
     // Discard all same color
     if (card.type === 'discard_all') {
-      const removed = player.hand.filter(c => c.color === card.color);
-      if (removed.length > 0) {
-        this.discardPile.push(...removed);
+      const kept = [];
+      for (const c of player.hand) {
+        if (c.color === card.color) {
+          this.discardPile.push(c);
+          this.lastAction.cardsDiscarded = (this.lastAction.cardsDiscarded || 0) + 1;
+        } else {
+          kept.push(c);
+        }
       }
-      this.lastAction.cardsDiscarded = removed.length;
+      player.hand = kept;
     }
 
     // Draw cards (stackable)
@@ -197,10 +202,13 @@ export class NoMercyEngine {
     this.checkEliminations();
     if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
 
-    // Color wheel
+    // Color wheel: the next player (current after advance) draws cards
     if (card.type === 'wild_wheel') {
-      this.pendingAction = { type: 'wheel', playerId, color: chosenColor };
-      return { success: true, needsWheel: true };
+      const next = this.players[this.currentPlayerIndex];
+      if (next) {
+        this.pendingAction = { type: 'wheel', playerId: next.id, color: chosenColor };
+        return { success: true, needsWheel: true };
+      }
     }
 
     return { success: true };
@@ -213,12 +221,32 @@ export class NoMercyEngine {
     const target = this.players.find(p => p.id === targetId);
     if (!target || target.isOut || target.id === playerId) return { error: '无效的目标玩家' };
 
+    // Execute the 7 play now
+    const cardIndex = this.pendingAction.cardIndex;
+    const card = player.hand[cardIndex];
+    if (!card) return { error: '牌无效' };
+    player.hand.splice(cardIndex, 1);
+    this.currentColor = card.color;
+    this.discardPile.push(card);
+    this.lastAction = { type: 'play', playerId, card };
+
+    // Swap hands
     const playerHand = player.hand;
     player.hand = target.hand;
     target.hand = playerHand;
     this.pendingAction = null;
-    this.lastAction = { type: 'swap', playerId, targetId, card: this.discardPile[this.discardPile.length - 1] };
+    this.lastAction = { type: 'swap', playerId, targetId, card };
+    this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
+    if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
     this.currentPlayerIndex = this.nextPlayerIndex();
+    return { success: true };
+  }
+
+  cancelPendingAction(playerId) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player || player.isOut) return { error: '无效的玩家' };
+    if (!this.pendingAction || this.pendingAction.playerId !== playerId) return { error: '没有待处理的操作' };
+    this.pendingAction = null;
     return { success: true };
   }
 

@@ -284,6 +284,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('cancel_pending_action', () => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine || !room.engine.cancelPendingAction) return;
+    const result = room.engine.cancelPendingAction(currentUser.id);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    broadcastGameState(room);
+  });
+
   socket.on('draw_wheel_card', () => {
     if (!currentUser) return;
     const room = manager.getRoomByPlayer(currentUser.id);

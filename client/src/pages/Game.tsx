@@ -179,7 +179,8 @@ export default function Game() {
 
   const colorDot = (c: string | null) => {
     if (!c) return null;
-    const bg = c === 'red' ? '#e53935' : c === 'yellow' ? '#fdd835' : c === 'green' ? '#43a047' : '#1e88e5';
+    const bg = c === 'red' ? '#e53935' : c === 'yellow' ? '#fdd835' : c === 'green' ? '#43a047' : c === 'blue' ? '#1e88e5'
+      : c === 'orange' ? '#ff6d00' : c === 'purple' ? '#aa00ff' : c === 'pink' ? '#e91e88' : c === 'teal' ? '#00bcd4' : '#888';
     return <div style={{ width: 16, height: 16, borderRadius: 4, background: bg, border: '1px solid rgba(255,255,255,0.3)', display: 'inline-block', verticalAlign: 'middle' }} />;
   };
 
@@ -363,8 +364,8 @@ export default function Game() {
                     : <md-outlined-button style={{ width: '100%' }} onClick={() => setMode('no-mercy')}>UNO No Mercy</md-outlined-button>
                   }
                 </div>
-                <md-filled-button onClick={startGame} style={{ minWidth: 200, fontSize: 16, height: 48 }}>
-                  开始游戏 ({players.length} 人)
+                <md-filled-button onClick={startGame} style={{ minWidth: 200, fontSize: 16, height: 48 }} disabled={players.length < 2 || undefined}>
+                  {players.length < 2 ? '至少需要2名玩家' : `开始游戏 (${players.length} 人)`}
                 </md-filled-button>
               </div>
             ) : (
@@ -475,7 +476,7 @@ export default function Game() {
               ))}
             </div>
             <div style={{ textAlign: 'right' }}>
-              <md-outlined-button style={{ minWidth: 80 }} onClick={() => setShowSwapPicker(false)}>取消</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 80 }} onClick={() => { setShowSwapPicker(false); getSocket().emit('cancel_pending_action'); }}>取消</md-outlined-button>
             </div>
           </div>
         </div>
