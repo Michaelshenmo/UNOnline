@@ -123,16 +123,22 @@ class GameManager {
     return result;
   }
 
-  startGame(roomId, userId) {
+  startGame(roomId, userId, options = {}) {
     const room = this.rooms.get(roomId);
     if (!room) return { error: '房间不存在' };
     if (room.hostId !== userId) return { error: '只有房主可以开始游戏' };
     if (room.players.length < 2) return { error: '至少需要2名玩家' };
     if (room.state !== 'waiting') return { error: '游戏已经开始' };
 
-    const Engine = room.gameMode === 'flip' ? FlipUnoEngine : room.gameMode === 'no-mercy' ? NoMercyEngine : UnoEngine;
-    const engine = new Engine();
     const playerInfos = room.players.map(p => ({ id: p.id, username: p.username, status: 'normal' }));
+    let engine;
+    if (room.gameMode === 'flip') {
+      engine = new FlipUnoEngine();
+    } else if (room.gameMode === 'no-mercy') {
+      engine = new NoMercyEngine(options.noMercyThreshold || 40);
+    } else {
+      engine = new UnoEngine();
+    }
     engine.initialize(playerInfos);
     room.engine = engine;
     room.state = 'playing';

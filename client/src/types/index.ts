@@ -31,6 +31,7 @@ export interface FlipCardPair {
 
 export interface GameState {
   mode?: 'standard' | 'flip' | 'no-mercy';
+  maxHand?: number;
   pendingAction?: any;
   state: 'waiting' | 'playing' | 'finished';
   currentSuit?: 'light' | 'dark';
@@ -63,6 +64,7 @@ export interface SystemSettings {
   max_players: string;
   turn_timeout: string;
   uno_penalty: string;
+  no_mercy_threshold?: string;
   allow_registration: string;
   announcement?: string;
   announcement_version?: string;

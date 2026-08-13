@@ -39,6 +39,7 @@ export default function Lobby() {
   const maxPlayersRef = useRef<any>(null);
   const turnTimeoutRef = useRef<any>(null);
   const unoPenaltyRef = useRef<any>(null);
+  const noMercyThresholdRef = useRef<any>(null);
   const smtpHostRef = useRef<any>(null);
   const smtpPortRef = useRef<any>(null);
   const smtpUserRef = useRef<any>(null);
@@ -301,6 +302,7 @@ export default function Lobby() {
     if (maxPlayersRef.current?.value) data.max_players = maxPlayersRef.current.value;
     if (turnTimeoutRef.current?.value) data.turn_timeout = turnTimeoutRef.current.value;
     if (unoPenaltyRef.current?.value) data.uno_penalty = unoPenaltyRef.current.value;
+    if (noMercyThresholdRef.current?.value) data.no_mercy_threshold = String(Math.min(100, Math.max(20, parseInt(noMercyThresholdRef.current.value))));
     data.announcement = editSettings.announcement || '';
     try {
       await api.updateSettings(data);
@@ -490,6 +492,9 @@ export default function Lobby() {
                   </div>
                   <div>
                     <md-outlined-text-field ref={unoPenaltyRef} label="未喊UNO罚牌数" type="number" value={editSettings.uno_penalty || '2'}></md-outlined-text-field>
+                  </div>
+                  <div>
+                    <md-outlined-text-field ref={noMercyThresholdRef} label="No Mercy 爆牌阈值 (20-100)" type="number" value={editSettings.no_mercy_threshold || '40'}></md-outlined-text-field>
                   </div>
                   <div>
                     <div className="md-outlined-textarea-wrap">

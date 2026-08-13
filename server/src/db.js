@@ -60,5 +60,6 @@ insertSetting.run('smtp_port', '465');
 insertSetting.run('smtp_user', '');
 insertSetting.run('smtp_password', '');
 insertSetting.run('smtp_from', '');
+insertSetting.run('no_mercy_threshold', '40');
 
 export default db;
