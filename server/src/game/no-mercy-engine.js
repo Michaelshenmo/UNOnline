@@ -1,7 +1,7 @@
 const COLORS = ['red', 'yellow', 'green', 'blue'];
 const NUMBERS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const DEFAULT_UNO_PENALTY = 2;
-const MAX_HAND = 40;
+const DEFAULT_MAX_HAND = 40;
 
 function createDeck() {
   const cards = [];
@@ -41,7 +41,8 @@ function shuffle(arr) {
 const DRAW_VALUES = { draw2: 2, draw4: 4, wild_rev4: 4, wild6: 6, wild10: 10 };
 
 export class NoMercyEngine {
-  constructor() {
+  constructor(maxHand = DEFAULT_MAX_HAND) {
+    this.maxHand = maxHand;
     this.reset();
   }
 
@@ -55,6 +56,8 @@ export class NoMercyEngine {
     this.state = 'waiting';
     this.winner = null;
     this.rankings = [];
+    this.finishOrder = [];
+    this.burstOrder = [];
     this.lastAction = null;
     this.pendingDraw = 0;
     this.lastDrawValue = 0;
@@ -129,11 +132,36 @@ export class NoMercyEngine {
     if (!this.canPlay(card)) return { error: '这张牌不能出' };
 
     const isWild = ['wild', 'wild_rev4', 'wild6', 'wild10', 'wild_wheel'].includes(card.type);
+    const isLastCard = player.hand.length === 1;
 
-    // 7-swap: wait for player selection before executing the play
+    // 7-swap: if last card, play directly and win; otherwise wait for selection
     if (card.type === 'number' && card.value === '7') {
+      if (isLastCard) {
+        player.hand.splice(cardIndex, 1);
+        this.currentColor = card.color;
+        this.discardPile.push(card);
+        this.lastAction = { type: 'play', playerId, card };
+        this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
+        this.eliminatePlayer(player, 'hand');
+        return { success: true, eliminated: true };
+      }
       this.pendingAction = { type: 'swap', playerId, cardIndex, color: card.color };
       return { success: true, needsSwap: true };
+    }
+
+    // 0-pass: if last card, win first then pass among remaining; otherwise confirm then pass
+    if (card.type === 'number' && card.value === '0') {
+      if (isLastCard) {
+        player.hand.splice(cardIndex, 1);
+        this.currentColor = card.color;
+        this.discardPile.push(card);
+        this.lastAction = { type: 'play', playerId, card };
+        this.eliminatePlayer(player, 'hand');
+        if (this.state === 'playing') this.doPassHands(playerId, true);
+        return { success: true, eliminated: true, passed: true };
+      }
+      this.pendingAction = { type: 'zero', playerId, cardIndex, color: card.color };
+      return { success: true, needsZeroConfirm: true };
     }
 
     // Wild cards need color choice
@@ -147,20 +175,10 @@ export class NoMercyEngine {
     }
 
     player.hand.splice(cardIndex, 1);
-    this.discardPile.push(card);
     this.lastAction = { type: 'play', playerId, card };
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
 
-    // 0-pass (number 0)
-    if (card.type === 'number' && card.value === '0') {
-      this.doPassHands(playerId);
-      this.checkEliminations();
-      this.currentPlayerIndex = this.nextPlayerIndex();
-      if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
-      return { success: true, passed: true };
-    }
-
-    // Discard all same color
+    // Discard all same color: put other cards below, discard_all card on top
     if (card.type === 'discard_all') {
       const kept = [];
       for (const c of player.hand) {
@@ -172,6 +190,9 @@ export class NoMercyEngine {
         }
       }
       player.hand = kept;
+      this.discardPile.push(card);
+    } else {
+      this.discardPile.push(card);
     }
 
     // Draw cards (stackable)
@@ -184,7 +205,7 @@ export class NoMercyEngine {
       }
       this.currentPlayerIndex = this.nextPlayerIndex();
       this.checkEliminations();
-      if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
+      if (player.hand.length === 0) { this.eliminatePlayer(player, 'hand'); return { success: true, eliminated: true }; }
       return { success: true, stacking: true };
     }
 
@@ -200,7 +221,7 @@ export class NoMercyEngine {
     }
 
     this.checkEliminations();
-    if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
+    if (player.hand.length === 0) { this.eliminatePlayer(player, 'hand'); return { success: true, eliminated: true }; }
 
     // Color wheel: the next player (current after advance) draws cards
     if (card.type === 'wild_wheel') {
@@ -212,6 +233,27 @@ export class NoMercyEngine {
     }
 
     return { success: true };
+  }
+
+  confirmZero(playerId) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player || player.isOut) return { error: '无效的玩家' };
+    if (!this.pendingAction || this.pendingAction.type !== 'zero' || this.pendingAction.playerId !== playerId) return { error: '没有待处理的出牌' };
+
+    const cardIndex = this.pendingAction.cardIndex;
+    const card = player.hand[cardIndex];
+    if (!card) return { error: '牌无效' };
+    player.hand.splice(cardIndex, 1);
+    this.currentColor = card.color;
+    this.discardPile.push(card);
+    this.lastAction = { type: 'play', playerId, card };
+    this.pendingAction = null;
+
+    this.doPassHands(playerId, false);
+    this.checkEliminations();
+    if (player.hand.length === 0) { this.eliminatePlayer(player, 'hand'); return { success: true, eliminated: true, passed: true }; }
+    this.currentPlayerIndex = this.nextPlayerIndex();
+    return { success: true, passed: true };
   }
 
   chooseSwapTarget(playerId, targetId) {
@@ -237,7 +279,7 @@ export class NoMercyEngine {
     this.pendingAction = null;
     this.lastAction = { type: 'swap', playerId, targetId, card };
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
-    if (player.hand.length === 0) { this.eliminatePlayer(player); return { success: true, eliminated: true }; }
+    if (player.hand.length === 0) { this.eliminatePlayer(player, 'hand'); return { success: true, eliminated: true }; }
     this.currentPlayerIndex = this.nextPlayerIndex();
     return { success: true };
   }
@@ -250,8 +292,11 @@ export class NoMercyEngine {
     return { success: true };
   }
 
-  doPassHands(playerId) {
-    const active = this.players.filter(p => !p.isOut);
+  doPassHands(playerId, excludeLast) {
+    let active = this.players.filter(p => !p.isOut);
+    if (excludeLast) {
+      active = active.filter(p => !p.isOut);
+    }
     const hands = active.map(p => p.hand);
     active.forEach((p, i) => {
       p.hand = hands[(i + (this.direction > 0 ? 1 : hands.length - 1)) % hands.length];
@@ -270,6 +315,7 @@ export class NoMercyEngine {
     if (drawn.color === this.pendingAction.color && !['wild', 'wild_rev4', 'wild6', 'wild10', 'wild_wheel'].includes(drawn.type)) {
       this.pendingAction = null;
       this.lastAction = { type: 'wheel_end', playerId, color: this.currentColor };
+      this.checkEliminations();
       this.currentPlayerIndex = this.nextPlayerIndex();
       return { success: true, finished: true, card: drawn };
     }
@@ -278,11 +324,13 @@ export class NoMercyEngine {
   }
 
   checkEliminations() {
-    const toEliminate = this.players.filter(p => !p.isOut && p.hand.length >= MAX_HAND);
+    const toEliminate = this.players.filter(p => !p.isOut && p.hand.length >= this.maxHand);
     for (const p of toEliminate) {
+      const handCount = p.hand.length;
       this.eliminatedCards.push(...p.hand);
       p.hand = [];
-      this.eliminatePlayer(p);
+      this.lastAction = { type: 'burst', playerId: p.id, handCount, threshold: this.maxHand };
+      this.eliminatePlayer(p, 'burst');
     }
   }
 
@@ -322,6 +370,7 @@ export class NoMercyEngine {
     player.hand.push(drawn);
     this.lastAction = { type: 'draw', playerId };
     if (this.canPlay(drawn)) return { success: true, card: drawn, canPlayNow: true };
+    this.checkEliminations();
     this.currentPlayerIndex = this.nextPlayerIndex();
     this.players.forEach(p => { if (!p.isOut) p.calledUno = false; });
     return { success: true, card: drawn };
@@ -350,14 +399,19 @@ export class NoMercyEngine {
     this.drawCardsForPlayer(this.players.indexOf(player), DEFAULT_UNO_PENALTY);
   }
 
-  eliminatePlayer(player) {
+  eliminatePlayer(player, reason = 'hand') {
     const playerIndex = this.players.indexOf(player);
     player.isOut = true;
     player.hand = [];
-    this.rankings.push({ playerId: player.id, username: player.username, rank: this.rankings.length + 1 });
+    if (reason === 'burst') {
+      this.burstOrder.push({ playerId: player.id, username: player.username });
+    } else {
+      this.finishOrder.push({ playerId: player.id, username: player.username });
+    }
     const remaining = this.players.filter(p => !p.isOut);
     if (remaining.length <= 1) {
-      if (remaining.length === 1) this.rankings.push({ playerId: remaining[0].id, username: remaining[0].username, rank: this.rankings.length + 1 });
+      if (remaining.length === 1) this.finishOrder.push({ playerId: remaining[0].id, username: remaining[0].username });
+      this.finalizeRankings();
       this.state = 'finished';
       this.winner = remaining[0] || null;
       return;
@@ -365,9 +419,25 @@ export class NoMercyEngine {
     if (playerIndex === this.currentPlayerIndex) this.currentPlayerIndex = this.nextPlayerIndex();
   }
 
+  finalizeRankings() {
+    this.rankings = [];
+    const total = this.players.length;
+    this.finishOrder.forEach((p, i) => {
+      this.rankings.push({ playerId: p.playerId, username: p.username, rank: i + 1 });
+    });
+    const normalCount = this.finishOrder.length;
+    for (let i = 0; i < this.burstOrder.length; i++) {
+      const b = this.burstOrder[i];
+      const rank = total - i;
+      this.rankings.push({ playerId: b.playerId, username: b.username, rank });
+    }
+    this.rankings.sort((a, b) => a.rank - b.rank);
+  }
+
   getPublicState(playerId) {
     return {
       mode: 'no-mercy',
+      maxHand: this.maxHand,
       state: this.state,
       players: this.players.map(p => ({
         id: p.id, username: p.username, cardCount: p.hand.length,

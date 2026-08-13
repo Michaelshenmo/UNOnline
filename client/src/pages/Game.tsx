@@ -31,6 +31,7 @@ export default function Game() {
   const [closingPrompt, setClosingPrompt] = useState(false);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [showWheelDraw, setShowWheelDraw] = useState(false);
+  const [showZeroConfirm, setShowZeroConfirm] = useState(false);
   const [swapNotice, setSwapNotice] = useState<any>(null);
   const [spectators, setSpectators] = useState<{ id: number; username: string }[]>([]);
   const [adminTarget, setAdminTarget] = useState<any | null>(null);
@@ -74,8 +75,11 @@ export default function Game() {
       else setShowSwapPicker(false);
       if (state.pendingAction?.type === 'wheel' && state.pendingAction.playerId === user?.id) setShowWheelDraw(true);
       else setShowWheelDraw(false);
+      if (state.pendingAction?.type === 'zero' && state.pendingAction.playerId === user?.id) setShowZeroConfirm(true);
+      else setShowZeroConfirm(false);
       if (state.lastAction?.type === 'swap') setSwapNotice(state.lastAction);
       else if (state.lastAction?.type === 'pass') setSwapNotice(state.lastAction);
+      else if (state.lastAction?.type === 'burst') setSwapNotice(state.lastAction);
       else setSwapNotice(null);
     });
 
@@ -176,6 +180,8 @@ export default function Game() {
   function doBan() { if (!adminTarget) return; getSocket().emit('ban_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
   function chooseSwapTarget(targetId: number) { getSocket().emit('choose_swap_target', { targetId }); setShowSwapPicker(false); }
   function drawWheelCard() { getSocket().emit('draw_wheel_card'); }
+  function confirmZeroPlay() { getSocket().emit('confirm_zero'); setShowZeroConfirm(false); }
+  function cancelZeroPlay() { setShowZeroConfirm(false); getSocket().emit('cancel_pending_action'); }
 
   const colorDot = (c: string | null) => {
     if (!c) return null;
@@ -449,13 +455,23 @@ export default function Game() {
         </div>
       )}
 
-      {/* Swap notice */}
+      {/* Swap / burst notice */}
       {swapNotice && (
-        <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'var(--md-sys-color-surface)', padding: '10px 20px', borderRadius: 10, boxShadow: 'var(--md-elevation-level3)', zIndex: 80, fontSize: 13, color: '#ffd54f', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <md-icon style={{ fontSize: 16 }}>swap_horiz</md-icon>
+        <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'var(--md-sys-color-surface)', padding: '10px 20px', borderRadius: 10, boxShadow: 'var(--md-elevation-level3)', zIndex: 80, fontSize: 13, color: swapNotice.type === 'burst' ? '#ef5350' : '#ffd54f', display: 'flex', alignItems: 'center', gap: 8, maxWidth: '80%' }}>
+          <md-icon style={{ fontSize: 16 }}>{swapNotice.type === 'swap' ? 'swap_horiz' : swapNotice.type === 'burst' ? 'warning' : 'style'}</md-icon>
           {swapNotice.type === 'swap'
-            ? `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 打出了7，与你交换了手牌`
-            : `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 打出了0，所有玩家将手牌交给了下家`}
+            ? (() => {
+                const playerName = gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家';
+                const targetName = gameState?.players.find(p => p.id === swapNotice.targetId)?.username || '某玩家';
+                if (swapNotice.playerId === user?.id) return `你打出了7，与 ${targetName} 交换了手牌`;
+                if (swapNotice.targetId === user?.id) return `${playerName} 打出了7，与你交换了手牌`;
+                return `${playerName} 打出了7，与 ${targetName} 交换了手牌`;
+              })()
+            : swapNotice.type === 'burst'
+              ? (swapNotice.playerId === user?.id
+                  ? `你的手牌数量达到 ${swapNotice.handCount}，超过阈值 ${swapNotice.threshold} 被淘汰`
+                  : `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 手牌数量达到 ${swapNotice.handCount}，超过阈值 ${swapNotice.threshold} 被淘汰`)
+              : `${gameState?.players.find(p => p.id === swapNotice.playerId)?.username || '某玩家'} 打出了0，所有玩家将手牌交给了下家`}
         </div>
       )}
 
@@ -477,6 +493,20 @@ export default function Game() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <md-outlined-button style={{ minWidth: 80 }} onClick={() => { setShowSwapPicker(false); getSocket().emit('cancel_pending_action'); }}>取消</md-outlined-button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 0-pass confirmation dialog */}
+      {showZeroConfirm && (
+        <div className="color-picker-overlay">
+          <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
+            <h3 style={{ marginBottom: 12 }}>确认出牌</h3>
+            <p style={{ color: '#ccc', fontSize: 14, marginBottom: 16 }}>打出 0 牌会导致所有玩家将手牌交给下一位玩家，确定要出吗？</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <md-filled-button style={{ minWidth: 100 }} onClick={confirmZeroPlay}>确认出牌</md-filled-button>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={cancelZeroPlay}>取消</md-outlined-button>
             </div>
           </div>
         </div>

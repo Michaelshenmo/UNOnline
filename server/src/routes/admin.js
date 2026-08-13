@@ -41,11 +41,12 @@ router.get('/settings', authenticateToken, requireAdmin, (req, res) => {
 });
 
 router.put('/settings', authenticateToken, requireAdmin, (req, res) => {
-  const { max_players, turn_timeout, uno_penalty, allow_registration, announcement, email_verification, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from } = req.body;
+  const { max_players, turn_timeout, uno_penalty, no_mercy_threshold, allow_registration, announcement, email_verification, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from } = req.body;
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   if (max_players) upsert.run('max_players', String(Math.min(10, Math.max(2, parseInt(max_players)))));
   if (turn_timeout) upsert.run('turn_timeout', String(Math.max(10, parseInt(turn_timeout))));
   if (uno_penalty !== undefined) upsert.run('uno_penalty', String(Math.max(0, parseInt(uno_penalty))));
+  if (no_mercy_threshold !== undefined) upsert.run('no_mercy_threshold', String(Math.min(100, Math.max(20, parseInt(no_mercy_threshold)))));
   if (allow_registration !== undefined) upsert.run('allow_registration', (allow_registration === true || allow_registration === 'true') ? 'true' : 'false');
   if (email_verification !== undefined) upsert.run('email_verification', (email_verification === true || email_verification === 'true') ? 'true' : 'false');
   if (smtp_host !== undefined) upsert.run('smtp_host', String(smtp_host));

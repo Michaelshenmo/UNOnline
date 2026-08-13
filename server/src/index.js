@@ -226,7 +226,9 @@ io.on('connection', (socket) => {
     if (mode && ['standard', 'flip', 'no-mercy'].includes(mode) && room.state === 'waiting') {
       room.gameMode = mode;
     }
-    const result = manager.startGame(room.id, currentUser.id);
+    const thresholdRow = db.prepare("SELECT value FROM system_settings WHERE key = 'no_mercy_threshold'").get();
+    const noMercyThreshold = parseInt(thresholdRow?.value) || 40;
+    const result = manager.startGame(room.id, currentUser.id, { noMercyThreshold });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     for (const player of room.engine.players) {
       const state = room.engine.getPublicState(player.id);
@@ -261,6 +263,7 @@ io.on('connection', (socket) => {
       socket.emit('draw_playable', { card: result.card });
     }
     broadcastGameState(room);
+    emitGameOverIfFinished(room);
   });
 
   socket.on('decline_play', () => {
@@ -291,6 +294,17 @@ io.on('connection', (socket) => {
     const result = room.engine.cancelPendingAction(currentUser.id);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
+    emitGameOverIfFinished(room);
+  });
+
+  socket.on('confirm_zero', () => {
+    if (!currentUser) return;
+    const room = manager.getRoomByPlayer(currentUser.id);
+    if (!room || !room.engine || !room.engine.confirmZero) return;
+    const result = room.engine.confirmZero(currentUser.id);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    broadcastGameState(room);
+    emitGameOverIfFinished(room);
   });
 
   socket.on('draw_wheel_card', () => {
@@ -300,6 +314,7 @@ io.on('connection', (socket) => {
     const result = room.engine.drawWheelCard(currentUser.id);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
+    emitGameOverIfFinished(room);
   });
 
   socket.on('choose_flip_color', ({ color }) => {
@@ -318,6 +333,7 @@ io.on('connection', (socket) => {
     const result = room.engine.acceptPendingDraw(currentUser.id);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     broadcastGameState(room);
+    emitGameOverIfFinished(room);
   });
 
   socket.on('call_uno', () => {
@@ -336,6 +352,7 @@ io.on('connection', (socket) => {
     if (!room || !room.engine) return;
     room.engine.penalizeNoUno(targetId);
     broadcastGameState(room);
+    emitGameOverIfFinished(room);
   });
 
   socket.on('get_room_state', () => {
@@ -371,6 +388,12 @@ io.on('connection', (socket) => {
       updateRooms();
     }
   });
+
+  function emitGameOverIfFinished(room) {
+    if (room.engine && room.engine.state === 'finished') {
+      io.to(`room:${room.id}`).emit('game_over', { rankings: room.engine.rankings });
+    }
+  }
 
   function broadcastGameState(room) {
     if (!room.engine) return;
