@@ -109,9 +109,28 @@ export default function Lobby() {
     } catch {}
   }
 
+  const [dialogClosing, setDialogClosing] = useState(false);
+
+  function closeNativeDialog(ref: any) {
+    const el = ref.current;
+    if (!el) return;
+    if (dialogClosing) return;
+    setDialogClosing(true);
+    el.classList.add('closing');
+    setTimeout(() => {
+      el.classList.remove('closing');
+      el.close();
+      setDialogClosing(false);
+    }, 150);
+  }
+
   function dismissAnnouncement(neverAgain: boolean) {
-    setShowAnnouncement(false);
-    if (neverAgain) localStorage.setItem('announcement_seen', String(announcementVersion));
+    setDialogClosing(true);
+    setTimeout(() => {
+      setDialogClosing(false);
+      setShowAnnouncement(false);
+      if (neverAgain) localStorage.setItem('announcement_seen', String(announcementVersion));
+    }, 150);
   }
 
   function toggleReg() {
@@ -333,7 +352,7 @@ export default function Lobby() {
         await api.changePassword(oldPwd, newPwd);
       }
       setProfileSuccess('资料已更新');
-      setTimeout(() => { setShowProfileCenter(false); setProfileSuccess(''); }, 1500);
+      setTimeout(() => { closeNativeDialog(profileDialogRef); setProfileSuccess(''); }, 1500);
     } catch (err: any) { setProfileError(err.message); }
   }
 
@@ -354,7 +373,7 @@ export default function Lobby() {
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
         await api.adminResetPassword(adminEditTarget.id, newPwd);
       }
-      setAdminEditTarget(null);
+      closeNativeDialog(adminEditDialogRef);
       loadAdminData();
     } catch (err: any) { setAdminEditError(err.message); }
   }
@@ -369,7 +388,7 @@ export default function Lobby() {
     if (!username || !password) { setCreateError('请填写用户名和密码'); return; }
     try {
       await api.createUser(username, password, nickname, role, email);
-      setShowCreateUser(false);
+      closeNativeDialog(createUserDialogRef);
       loadAdminData();
     } catch (err: any) {
       setCreateError(err.message);
@@ -626,7 +645,7 @@ export default function Lobby() {
           </div>
         )}
         <div className="md-dialog-actions">
-          {!profileSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => profileDialogRef.current.close()}>关闭</md-outlined-button>}
+          {!profileSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(profileDialogRef)}>关闭</md-outlined-button>}
           {!profileSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleUpdateProfile}>保存</md-filled-button>}
         </div>
       </dialog>
@@ -655,7 +674,7 @@ export default function Lobby() {
           {adminEditError && <div className="form-error" style={{ marginTop: 8 }}>{adminEditError}</div>}
         </div>
         <div className="md-dialog-actions">
-          <md-outlined-button style={{ minWidth: 100 }} onClick={() => adminEditDialogRef.current.close()}>取消</md-outlined-button>
+          <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(adminEditDialogRef)}>取消</md-outlined-button>
           <md-filled-button style={{ minWidth: 100 }} onClick={handleAdminEditUser}>保存</md-filled-button>
         </div>
       </dialog>
@@ -675,14 +694,14 @@ export default function Lobby() {
           </md-outlined-select>
         </div>
         <div className="md-dialog-actions">
-          <md-outlined-button style={{ minWidth: 100 }} onClick={() => createUserDialogRef.current.close()}>取消</md-outlined-button>
+          <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(createUserDialogRef)}>取消</md-outlined-button>
           <md-filled-button style={{ minWidth: 100 }} onClick={handleCreateUser}>创建</md-filled-button>
         </div>
       </dialog>
 
       {/* Announcement dialog */}
       {showAnnouncement && (
-        <div className="color-picker-overlay">
+        <div className={`color-picker-overlay ${dialogClosing ? 'overlay-hidden' : ''}`}>
           <div className="color-picker-dialog" style={{ maxWidth: 500, width: '90%', textAlign: 'left' }}>
             <h3 style={{ marginBottom: 14, fontWeight: 500 }}><md-icon style={{ fontSize: 20, verticalAlign: 'middle', marginRight: 6 }}>campaign</md-icon> 公告</h3>
             <div style={{ fontSize: 14, lineHeight: 1.7, color: '#ddd', maxHeight: 300, overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: announcement }} />

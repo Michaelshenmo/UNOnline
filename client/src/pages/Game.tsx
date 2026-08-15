@@ -27,8 +27,6 @@ export default function Game() {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [closingPicker, setClosingPicker] = useState(false);
-  const [closingPrompt, setClosingPrompt] = useState(false);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [showWheelDraw, setShowWheelDraw] = useState(false);
   const [showZeroConfirm, setShowZeroConfirm] = useState(false);
@@ -149,39 +147,43 @@ export default function Game() {
     getSocket().emit('play_card', { cardIndex: index });
   }
   function acceptDraw() { getSocket().emit('accept_draw'); }
-  function closeAnim(setClose: () => void) {
-    setClosing(true); setTimeout(() => { setClosing(false); setClose(); }, 120);
+  function closeWithAnim(fn: () => void) {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => { setClosing(false); fn(); }, 120);
   }
+  function closeAdmin() { closeWithAnim(() => setAdminTarget(null)); }
+  function closeConfirm() { closeWithAnim(() => setConfirmAction(null)); }
+  function closeSwapPicker() { closeWithAnim(() => { setShowSwapPicker(false); getSocket().emit('cancel_pending_action'); }); }
+  function closeZeroConfirm() { closeWithAnim(() => { setShowZeroConfirm(false); getSocket().emit('cancel_pending_action'); }); }
+  function closeColorPicker() { closeWithAnim(() => setShowColorPicker(false)); }
   function handleColorPick(color: string) {
-    setClosingPicker(true);
-    setTimeout(() => {
-      setClosingPicker(false); setShowColorPicker(false);
+    closeWithAnim(() => {
+      setShowColorPicker(false);
       if (pendingCardIndex !== null) { getSocket().emit('play_card', { cardIndex: pendingCardIndex, color }); setPendingCardIndex(null); }
       else getSocket().emit('choose_flip_color', { color });
-    }, 120);
+    });
   }
   function drawCard() { if (isMyTurn) { setShowPlayPrompt(false); getSocket().emit('draw_card'); } }
-  function declineDrawnCard() { setClosingPrompt(true); setTimeout(() => { setClosingPrompt(false); setShowPlayPrompt(false); setDrawnCard(null); getSocket().emit('decline_play'); }, 120); }
+  function declineDrawnCard() { closeWithAnim(() => { setShowPlayPrompt(false); setDrawnCard(null); getSocket().emit('decline_play'); }); }
   function playDrawnCard() {
     if (!drawnCard) return;
-    setClosingPrompt(true);
-    setTimeout(() => {
-      setClosingPrompt(false); setShowPlayPrompt(false); setDrawnCard(null);
+    closeWithAnim(() => {
+      setShowPlayPrompt(false); setDrawnCard(null);
       const idx = myHand.length - 1;
       if (idx >= 0) handlePlayCard(idx);
-    }, 120);
+    });
   }
   function callUno() { getSocket().emit('call_uno'); setShowUnoButton(false); }
   function leaveGame() { getSocket().emit('leave_room'); navigate('/lobby'); }
 
   const isAdmin = user?.role === 'admin';
   function openAdminDialog(target: any) { setAdminTarget(target); setConfirmAction(null); }
-  function doKick() { if (!adminTarget) return; getSocket().emit('kick_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
-  function doBan() { if (!adminTarget) return; getSocket().emit('ban_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }
-  function chooseSwapTarget(targetId: number) { getSocket().emit('choose_swap_target', { targetId }); setShowSwapPicker(false); }
+  function doKick() { if (!adminTarget) return; closeWithAnim(() => { getSocket().emit('kick_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }); }
+  function doBan() { if (!adminTarget) return; closeWithAnim(() => { getSocket().emit('ban_player', { targetId: adminTarget.id }); setAdminTarget(null); setConfirmAction(null); }); }
+  function chooseSwapTarget(targetId: number) { closeWithAnim(() => { getSocket().emit('choose_swap_target', { targetId }); setShowSwapPicker(false); }); }
   function drawWheelCard() { getSocket().emit('draw_wheel_card'); }
-  function confirmZeroPlay() { getSocket().emit('confirm_zero'); setShowZeroConfirm(false); }
-  function cancelZeroPlay() { setShowZeroConfirm(false); getSocket().emit('cancel_pending_action'); }
+  function confirmZeroPlay() { closeWithAnim(() => { getSocket().emit('confirm_zero'); setShowZeroConfirm(false); }); }
 
   const colorDot = (c: string | null) => {
     if (!c) return null;
@@ -399,7 +401,7 @@ export default function Game() {
 
       {/* Draw playable prompt */}
       {showPlayPrompt && drawnCard && (
-        <div className={`color-picker-overlay ${closingPrompt ? 'overlay-hidden' : ''}`}>
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`}>
           <div className="color-picker-dialog" style={{ maxWidth: 360 }}>
             <h3 style={{ marginBottom: 12, fontWeight: 500, fontSize: 16 }}>抽到了可出的牌！</h3>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
@@ -416,7 +418,7 @@ export default function Game() {
 
       {/* Admin player info dialog */}
       {adminTarget && !confirmAction && (
-        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={() => closeAnim(() => setAdminTarget(null))}>
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={closeAdmin}>
           <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, width: '90%', textAlign: 'left' }}>
             <h3 style={{ marginBottom: 16, textAlign: 'center' }}>玩家信息</h3>
             <div style={{ fontSize: 14, lineHeight: 2 }}>
@@ -430,7 +432,7 @@ export default function Game() {
               <md-outlined-button style={{ minWidth: 100, '--md-sys-color-primary': '#d32f2f' } as any} onClick={() => setConfirmAction('ban')}>封禁</md-outlined-button>
             </div>
             <div style={{ textAlign: 'right', marginTop: 12 }}>
-              <md-outlined-button style={{ minWidth: 80 }} onClick={() => setAdminTarget(null)}>取消</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 80 }} onClick={closeAdmin}>取消</md-outlined-button>
             </div>
           </div>
         </div>
@@ -438,8 +440,8 @@ export default function Game() {
 
       {/* Admin confirmation dialog */}
       {confirmAction && (
-        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`}>
-          <div className="color-picker-dialog" style={{ maxWidth: 340 }}>
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={closeConfirm}>
+          <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
             <h3 style={{ marginBottom: 12 }}>确认操作</h3>
             <p style={{ color: '#ccc', fontSize: 14, marginBottom: 16 }}>
               {confirmAction === 'kick' ? '确定要踢出该玩家吗？' : '确定要封禁该玩家吗？'}
@@ -449,7 +451,7 @@ export default function Game() {
                 if (confirmAction === 'kick') doKick();
                 else doBan();
               }}>确认</md-filled-button>
-              <md-outlined-button style={{ minWidth: 100 }} onClick={() => setConfirmAction(null)}>取消</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={closeConfirm}>取消</md-outlined-button>
             </div>
           </div>
         </div>
@@ -477,7 +479,7 @@ export default function Game() {
 
       {/* 7-swap player picker */}
       {showSwapPicker && (
-        <div className="color-picker-overlay">
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={closeSwapPicker}>
           <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, width: '90%' }}>
             <h3 style={{ marginBottom: 16 }}>选择交换手牌的玩家</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -492,7 +494,7 @@ export default function Game() {
               ))}
             </div>
             <div style={{ textAlign: 'right' }}>
-              <md-outlined-button style={{ minWidth: 80 }} onClick={() => { setShowSwapPicker(false); getSocket().emit('cancel_pending_action'); }}>取消</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 80 }} onClick={closeSwapPicker}>取消</md-outlined-button>
             </div>
           </div>
         </div>
@@ -500,13 +502,13 @@ export default function Game() {
 
       {/* 0-pass confirmation dialog */}
       {showZeroConfirm && (
-        <div className="color-picker-overlay">
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={closeZeroConfirm}>
           <div className="color-picker-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
             <h3 style={{ marginBottom: 12 }}>确认出牌</h3>
             <p style={{ color: '#ccc', fontSize: 14, marginBottom: 16 }}>打出 0 牌会导致所有玩家将手牌交给下一位玩家，确定要出吗？</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <md-filled-button style={{ minWidth: 100 }} onClick={confirmZeroPlay}>确认出牌</md-filled-button>
-              <md-outlined-button style={{ minWidth: 100 }} onClick={cancelZeroPlay}>取消</md-outlined-button>
+              <md-outlined-button style={{ minWidth: 100 }} onClick={closeZeroConfirm}>取消</md-outlined-button>
             </div>
           </div>
         </div>
@@ -530,7 +532,7 @@ export default function Game() {
 
       {/* Color picker */}
       {showColorPicker && (
-        <div className={`color-picker-overlay ${closingPicker ? 'overlay-hidden' : ''}`} onClick={() => { setClosingPicker(true); setTimeout(() => { setClosingPicker(false); setShowColorPicker(false); }, 120); }}>
+        <div className={`color-picker-overlay ${closing ? 'overlay-hidden' : ''}`} onClick={closeColorPicker}>
           <div className="color-picker-dialog" onClick={(e) => e.stopPropagation()}>
             <h3>选择颜色</h3>
             <div className="color-options">
