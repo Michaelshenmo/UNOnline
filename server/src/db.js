@@ -45,6 +45,8 @@ db.exec(`
 // Migrations
 try { db.exec('ALTER TABLE users ADD COLUMN status TEXT DEFAULT "normal"'); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN title TEXT'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN title_enabled INTEGER DEFAULT 0'); } catch {}
 
 // Insert default settings
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');

@@ -135,14 +135,14 @@ export const api = {
     });
   },
 
-  updateProfile(nickname: string) {
+  updateProfile(nickname: string, title?: string) {
     return request('/auth/profile', {
       method: 'PUT',
-      body: JSON.stringify({ nickname }),
+      body: JSON.stringify({ nickname, title }),
     });
   },
 
-  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; email?: string; role?: string; status?: string }) {
+  adminUpdateUser(userId: number, data: { username?: string; nickname?: string; email?: string; role?: string; status?: string; title_enabled?: boolean; title?: string }) {
     return request(`/admin/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(data),

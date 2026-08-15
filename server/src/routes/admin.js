@@ -7,7 +7,7 @@ import { testSmtp, sendTestMail } from '../mail.js';
 const router = Router();
 
 router.get('/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, nickname, email, role, status, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, nickname, email, role, status, title, title_enabled, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -138,7 +138,7 @@ router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) =>
 });
 
 router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
-  const { username, nickname, email, role, status } = req.body;
+  const { username, nickname, email, role, status, title_enabled, title } = req.body;
   const targetId = parseInt(req.params.id);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId);
   if (!user) return res.status(404).json({ error: '用户不存在' });
@@ -154,12 +154,18 @@ router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
     if (existing) return res.status(400).json({ error: '该邮箱已被其他账号使用' });
   }
 
+  if (title !== undefined && title.length > 10) {
+    return res.status(400).json({ error: '称号最多10个字符' });
+  }
+
   // Admin cannot change own status or role
   if (targetId === req.user.id) {
     const newUsername = username || user.username;
     const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
     const newEmail = email !== undefined ? (email || null) : user.email;
-    db.prepare('UPDATE users SET username = ?, nickname = ?, email = ? WHERE id = ?').run(newUsername, newNickname, newEmail, targetId);
+    const newTitleEnabled = title_enabled !== undefined ? (title_enabled === true || title_enabled === 'true' ? 1 : 0) : user.title_enabled;
+    const newTitle = title !== undefined ? (title || null) : user.title;
+    db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, title_enabled = ?, title = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newTitleEnabled, newTitle, targetId);
     return res.json({ message: '用户资料已更新' });
   }
 
@@ -168,7 +174,9 @@ router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
   const newEmail = email !== undefined ? (email || null) : user.email;
   const newRole = role || user.role;
   const newStatus = status || user.status;
-  db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, role = ?, status = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newRole, newStatus, targetId);
+  const newTitleEnabled = title_enabled !== undefined ? (title_enabled === true || title_enabled === 'true' ? 1 : 0) : user.title_enabled;
+  const newTitle = title !== undefined ? (title || null) : user.title;
+  db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, role = ?, status = ?, title_enabled = ?, title = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newRole, newStatus, newTitleEnabled, newTitle, targetId);
   res.json({ message: '用户资料已更新' });
 });
 

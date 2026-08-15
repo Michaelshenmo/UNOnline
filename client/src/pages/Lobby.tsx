@@ -27,8 +27,10 @@ export default function Lobby() {
   const [showProfileCenter, setShowProfileCenter] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileTitleEnabled, setProfileTitleEnabled] = useState(false);
   const [adminEditTarget, setAdminEditTarget] = useState<any | null>(null);
   const [adminEditError, setAdminEditError] = useState('');
+  const [adminEditTitleEnabled, setAdminEditTitleEnabled] = useState(false);
   const regSwitchRef = useRef<any>(null);
 
   const cuUsernameRef = useRef<any>(null);
@@ -48,6 +50,7 @@ export default function Lobby() {
   const createUserDialogRef = useRef<any>(null);
   const successTimerRef = useRef<any>(null);
   const profileNicknameRef = useRef<any>(null);
+  const profileTitleRef = useRef<any>(null);
   const profilePwdOldRef = useRef<any>(null);
   const profilePwdNewRef = useRef<any>(null);
   const profilePwdConfirmRef = useRef<any>(null);
@@ -56,6 +59,8 @@ export default function Lobby() {
   const adminEditEmailRef = useRef<any>(null);
   const adminEditRoleRef = useRef<any>(null);
   const adminEditStatusRef = useRef<any>(null);
+  const adminEditTitleRef = useRef<any>(null);
+  const adminTitleSwitchRef = useRef<any>(null);
   const adminEditPwdRef = useRef<any>(null);
   const adminEditPwdConfirmRef = useRef<any>(null);
 
@@ -223,7 +228,16 @@ export default function Lobby() {
   useEffect(() => {
     const el = profileDialogRef.current;
     if (!el) return;
-    if (showProfileCenter) { el.showModal(); setProfileError(''); setProfileSuccess(''); }
+    if (showProfileCenter) {
+      el.showModal(); setProfileError(''); setProfileSuccess('');
+      api.getProfile().then(p => {
+        setProfileTitleEnabled(!!p.title_enabled);
+        setTimeout(() => {
+          if (profileTitleRef.current) profileTitleRef.current.value = p.title || '';
+          if (profileNicknameRef.current) profileNicknameRef.current.value = p.nickname || p.username;
+        }, 50);
+      }).catch(() => {});
+    }
     else el.close();
   }, [showProfileCenter]);
 
@@ -266,6 +280,14 @@ export default function Lobby() {
     el.addEventListener('close', handler);
     return () => el.removeEventListener('close', handler);
   }, []);
+
+  useEffect(() => {
+    customElements.whenDefined('md-switch').then(() => {
+      if (adminTitleSwitchRef.current) {
+        adminTitleSwitchRef.current.selected = adminEditTitleEnabled;
+      }
+    });
+  }, [adminEditTitleEnabled]);
 
   async function fetchRooms() {
     try { setRooms(await api.getRooms()); } catch {}
@@ -341,11 +363,12 @@ export default function Lobby() {
   async function handleUpdateProfile() {
     setProfileError(''); setProfileSuccess('');
     const nickname = profileNicknameRef.current?.value?.trim();
+    const title = profileTitleRef.current?.value?.trim();
     const oldPwd = profilePwdOldRef.current?.value;
     const newPwd = profilePwdNewRef.current?.value;
     const confirmPwd = profilePwdConfirmRef.current?.value;
     try {
-      if (nickname) await api.updateProfile(nickname);
+      if (nickname) await api.updateProfile(nickname, title);
       if (oldPwd && newPwd) {
         if (newPwd.length < 6) { setProfileError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setProfileError('两次密码不一致'); return; }
@@ -367,7 +390,8 @@ export default function Lobby() {
     const newPwd = adminEditPwdRef.current?.value;
     const confirmPwd = adminEditPwdConfirmRef.current?.value;
     try {
-      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus });
+      const newTitle = adminEditTitleRef.current?.value?.trim();
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus, title_enabled: adminEditTitleEnabled, title: newTitle });
       if (newPwd) {
         if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
@@ -486,6 +510,8 @@ export default function Lobby() {
                               if (adminEditStatusRef.current) adminEditStatusRef.current.value = u.status || 'normal';
                               if (adminEditPwdRef.current) adminEditPwdRef.current.value = '';
                               if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
+                              if (adminEditTitleRef.current) adminEditTitleRef.current.value = u.title || '';
+                              setAdminEditTitleEnabled(!!u.title_enabled);
                             }, 50);
                           }}>修改信息</md-text-button>
                           <md-text-button style={{ minWidth: 60 }} onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
@@ -611,11 +637,15 @@ export default function Lobby() {
               {onlineUsers.length === 0 ? (
                 <div style={{ color: '#aaa', fontSize: 13 }}>暂无其他在线玩家</div>
               ) : (
-                onlineUsers.map(u => (
-                  <div key={u.id} className="online-chip">
-                    {(u as any).nickname || (u as any).username || `用户 #${u.id}`}
-                  </div>
-                ))
+                onlineUsers.map(u => {
+                  const name = (u as any).nickname || (u as any).username || `用户 #${u.id}`;
+                  const hasTitle = (u as any).title && (u as any).title_enabled;
+                  return (
+                    <div key={u.id} className="online-chip" style={hasTitle ? { color: '#00e5ff' } : undefined}>
+                      {hasTitle ? `『${(u as any).title}』` : ''}{name}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -634,6 +664,9 @@ export default function Lobby() {
               <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>邮箱: {user?.email || '未绑定'}</div>
               <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>用户名: {user?.username}</div>
             </div>
+            {profileTitleEnabled ? (
+              <md-outlined-text-field ref={profileTitleRef} label="称号（最多10个字符）" type="text" value={user?.title || ''} style={{ marginBottom: 12 }}></md-outlined-text-field>
+            ) : null}
             <md-outlined-text-field ref={profileNicknameRef} label="昵称" type="text" value={user?.nickname || user?.username}></md-outlined-text-field>
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginTop: 4 }}>
               <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>修改密码（选填）</p>
@@ -666,6 +699,13 @@ export default function Lobby() {
             <md-select-option value="normal"><div slot="headline">正常</div></md-select-option>
             <md-select-option value="banned"><div slot="headline">被封禁</div></md-select-option>
           </md-outlined-select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, cursor: 'pointer' }} onClick={() => setAdminEditTitleEnabled(!adminEditTitleEnabled)}>
+            <span style={{ fontSize: 14, color: '#ccc' }}>启用称号</span>
+            <md-switch ref={adminTitleSwitchRef} selected={adminEditTitleEnabled || undefined}></md-switch>
+          </div>
+          {adminEditTitleEnabled && (
+            <md-outlined-text-field ref={adminEditTitleRef} label="称号（最多10个字符）" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+          )}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
             <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>重置密码（选填）</p>
             <md-outlined-text-field ref={adminEditPwdRef} label="新密码" type="password" style={{ marginBottom: 12 }}></md-outlined-text-field>

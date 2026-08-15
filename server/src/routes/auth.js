@@ -97,7 +97,7 @@ router.post('/register', async (req, res) => {
   const user = { id: result.lastInsertRowid, username, nickname: nickname || username, role };
   const token = generateToken(user);
 
-  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role, status: 'normal', email: finalEmail || null } });
+  res.json({ token, user: { id: user.id, username, nickname: nickname || username, role, status: 'normal', email: finalEmail || null, title: null, title_enabled: 0 } });
 });
 
 router.post('/login', (req, res) => {
@@ -112,11 +112,11 @@ router.post('/login', (req, res) => {
   }
 
   const token = generateToken(user);
-  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status, email: user.email || null } });
+  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status, email: user.email || null, title: user.title || null, title_enabled: user.title_enabled || 0 } });
 });
 
 router.get('/profile', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, email, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, email, title, title_enabled, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
   res.json(user);
 });
@@ -144,12 +144,18 @@ router.put('/password', authenticateToken, (req, res) => {
 });
 
 router.put('/profile', authenticateToken, (req, res) => {
-  const { nickname } = req.body;
+  const { nickname, title } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
   if (user.status === 'banned') return res.status(403).json({ error: '账号已被封禁' });
 
-  db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(nickname || req.user.username, req.user.id);
+  if (title !== undefined && !user.title_enabled) {
+    return res.status(403).json({ error: '未启用称号功能' });
+  }
+  if (title !== undefined && title.length > 10) {
+    return res.status(400).json({ error: '称号最多10个字符' });
+  }
+  db.prepare('UPDATE users SET nickname = ?, title = ? WHERE id = ?').run(nickname || req.user.username, title !== undefined ? (title || null) : user.title, req.user.id);
   res.json({ message: '资料已更新' });
 });
 

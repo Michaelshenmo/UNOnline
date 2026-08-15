@@ -185,6 +185,13 @@ export default function Game() {
   function drawWheelCard() { getSocket().emit('draw_wheel_card'); }
   function confirmZeroPlay() { closeWithAnim(() => { getSocket().emit('confirm_zero'); setShowZeroConfirm(false); }); }
 
+  const renderPlayerName = (p: any) => {
+    const hasTitle = p.title && p.title_enabled;
+    return hasTitle
+      ? <span style={{ color: '#00e5ff' }}>『{p.title}』{p.nickname || p.username}</span>
+      : <>{p.nickname || p.username}</>;
+  };
+
   const colorDot = (c: string | null) => {
     if (!c) return null;
     const bg = c === 'red' ? '#e53935' : c === 'yellow' ? '#fdd835' : c === 'green' ? '#43a047' : c === 'blue' ? '#1e88e5'
@@ -271,7 +278,7 @@ export default function Game() {
             onClick={isAdmin && p.id !== user?.id ? () => openAdminDialog(p) : undefined}
             style={{ cursor: isAdmin && p.id !== user?.id ? 'pointer' : 'default' }}>
             <div className="name">
-              {(p as any).nickname || p.username} {p.id === user?.id ? '(你)' : ''}
+              {renderPlayerName(p)} {p.id === user?.id ? '(你)' : ''}
               {(p as any).calledUno && (p as any).cardCount === 1 ? <span className="uno-tag">UNO!</span> : ''}
               {(p as any).status === 'banned' ? <span style={{ background: '#d32f2f', color: '#fff', fontSize: 9, padding: '1px 5px', borderRadius: 3, marginLeft: 4 }}>封禁</span> : ''}
             </div>
@@ -488,7 +495,7 @@ export default function Game() {
                   style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>{p.username}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{renderPlayerName(p)}</span>
                   <span style={{ fontSize: 13, color: '#aaa' }}>{p.cardCount} 张牌</span>
                 </div>
               ))}

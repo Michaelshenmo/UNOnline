@@ -25,8 +25,18 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
+function enrichRoom(room) {
+  if (!room) return room;
+  const result = { ...room, players: room.players.map(p => ({ ...p })) };
+  for (const p of result.players) {
+    const row = db.prepare('SELECT title, title_enabled FROM users WHERE id = ?').get(p.id);
+    if (row) { p.title = row.title; p.title_enabled = row.title_enabled; }
+  }
+  return result;
+}
+
 app.get('/api/rooms', (req, res) => {
-  res.json(manager.getRooms());
+  res.json(manager.getRooms().map(r => enrichRoom(r)));
 });
 
 app.get('/api/public-config', (req, res) => {
@@ -47,8 +57,9 @@ app.get('/api/online-users', (req, res) => {
   const user = token ? verifyToken(token) : null;
   const onlineIds = manager.getOnlineUsers(user?.id).map(u => u.id);
   const users = onlineIds.length > 0
-    ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${onlineIds.join(',')})`).all()
+    ? db.prepare(`SELECT id, username, nickname, title, title_enabled FROM users WHERE id IN (${onlineIds.join(',')})`).all()
     : [];
+  users.sort((a, b) => ((b.title_enabled && b.title) ? 1 : 0) - ((a.title_enabled && a.title) ? 1 : 0));
   res.json(users);
 });
 
@@ -95,7 +106,7 @@ io.on('connection', (socket) => {
     }
     const room = manager.createRoom(currentUser.id, displayName(currentUser));
     socket.join(`room:${room.id}`);
-    socket.emit('room_created', { room });
+    socket.emit('room_created', { room: enrichRoom(room) });
     updateRooms();
   });
 
@@ -113,10 +124,10 @@ io.on('connection', (socket) => {
       return;
     }
     socket.join(`room:${roomId}`);
-    socket.emit('room_joined', { room: result.room });
+    socket.emit('room_joined', { room: enrichRoom(result.room) });
     socket.to(`room:${roomId}`).emit('player_joined', {
       player: { id: currentUser.id, username: displayName(currentUser) },
-      room: result.room,
+      room: enrichRoom(result.room),
     });
     updateRooms();
   });
@@ -134,7 +145,7 @@ io.on('connection', (socket) => {
     const result = manager.joinSpectator(roomId, currentUser.id, displayName(currentUser));
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     socket.join(`room:${roomId}`);
-    socket.emit('spectator_joined', { room: result.room });
+    socket.emit('spectator_joined', { room: enrichRoom(result.room) });
     broadcastRoomState(room);
     updateRooms();
   });
@@ -149,7 +160,7 @@ io.on('connection', (socket) => {
     } else {
       socket.to(`room:${result.roomId}`).emit('player_left', {
         playerId: currentUser.id,
-        room: result.room,
+        room: enrichRoom(result.room),
       });
       if (result.room.state === 'playing') {
         broadcastGameState(result.room);
@@ -177,7 +188,7 @@ io.on('connection', (socket) => {
     const result = manager.leaveRoom(targetId);
     if (result && !result.disbanded) {
       io.to(`user:${targetId}`).emit('kicked', { reason: 'kicked' });
-      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
+      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: enrichRoom(result.room) });
       if (result.room.state === 'playing') broadcastGameState(result.room);
     }
     updateRooms();
@@ -192,7 +203,7 @@ io.on('connection', (socket) => {
     const result = manager.leaveRoom(targetId);
     if (result && !result.disbanded) {
       io.to(`user:${targetId}`).emit('banned', { reason: 'banned' });
-      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: result.room });
+      io.to(`room:${result.roomId}`).emit('player_left', { playerId: targetId, room: enrichRoom(result.room) });
       if (result.room.state === 'playing') broadcastGameState(result.room);
     }
     updateRooms();
@@ -228,7 +239,10 @@ io.on('connection', (socket) => {
     }
     const thresholdRow = db.prepare("SELECT value FROM system_settings WHERE key = 'no_mercy_threshold'").get();
     const noMercyThreshold = parseInt(thresholdRow?.value) || 40;
-    const result = manager.startGame(room.id, currentUser.id, { noMercyThreshold });
+    const titleRows = db.prepare('SELECT id, title, title_enabled FROM users').all();
+    const titleMap = {};
+    titleRows.forEach(t => { titleMap[t.id] = { title: t.title, title_enabled: t.title_enabled }; });
+    const result = manager.startGame(room.id, currentUser.id, { noMercyThreshold, titleMap });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     for (const player of room.engine.players) {
       const state = room.engine.getPublicState(player.id);
@@ -366,7 +380,7 @@ io.on('connection', (socket) => {
       const state = room.engine.getPublicState(isSpec ? null : currentUser.id);
       socket.emit('game_state', state);
     } else {
-      socket.emit('room_info', { room });
+      socket.emit('room_info', { room: enrichRoom(room) });
     }
   });
 
@@ -378,7 +392,7 @@ io.on('connection', (socket) => {
       if (result && !result.disbanded) {
         io.to(`room:${result.roomId}`).emit('player_left', {
           playerId: currentUser.id,
-          room: result.room,
+          room: enrichRoom(result.room),
         });
         if (result.room.state === 'playing') {
           broadcastGameState(result.room);
@@ -424,13 +438,14 @@ io.on('connection', (socket) => {
       ids.push(uid);
     }
     const users = ids.length > 0
-      ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${ids.join(',')})`).all()
+      ? db.prepare(`SELECT id, username, nickname, title, title_enabled FROM users WHERE id IN (${ids.join(',')})`).all()
       : [];
+    users.sort((a, b) => ((b.title_enabled && b.title) ? 1 : 0) - ((a.title_enabled && a.title) ? 1 : 0));
     io.emit('online_users', users);
   }
 
   function updateRooms() {
-    io.emit('rooms_update', manager.getRooms());
+    io.emit('rooms_update', manager.getRooms().map(r => enrichRoom(r)));
   }
 });
 

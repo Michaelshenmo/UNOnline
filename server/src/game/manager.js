@@ -130,7 +130,10 @@ class GameManager {
     if (room.players.length < 2) return { error: '至少需要2名玩家' };
     if (room.state !== 'waiting') return { error: '游戏已经开始' };
 
-    const playerInfos = room.players.map(p => ({ id: p.id, username: p.username, status: 'normal' }));
+    const playerInfos = room.players.map(p => {
+      const t = options.titleMap ? options.titleMap[p.id] : null;
+      return { id: p.id, username: p.username, status: 'normal', title: t ? t.title : null, title_enabled: t ? t.title_enabled : 0 };
+    });
     let engine;
     if (room.gameMode === 'flip') {
       engine = new FlipUnoEngine();
