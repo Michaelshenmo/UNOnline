@@ -24,13 +24,19 @@ export default function Lobby() {
   const [announcement, setAnnouncement] = useState('');
   const [announcementVersion, setAnnouncementVersion] = useState(0);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [showTitleManager, setShowTitleManager] = useState(false);
+  const [titleManagerTitle, setTitleManagerTitle] = useState('');
+  const [titleManagerColor, setTitleManagerColor] = useState('#00e5ff');
+  const [titleManagerError, setTitleManagerError] = useState('');
+  const [titleManagerSuccess, setTitleManagerSuccess] = useState('');
+  const titleInputRef = useRef<any>(null);
   const [showProfileCenter, setShowProfileCenter] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
-  const [profileTitleEnabled, setProfileTitleEnabled] = useState(false);
   const [adminEditTarget, setAdminEditTarget] = useState<any | null>(null);
   const [adminEditError, setAdminEditError] = useState('');
   const [adminEditTitleEnabled, setAdminEditTitleEnabled] = useState(false);
+  const [adminEditTitleColor, setAdminEditTitleColor] = useState('#00e5ff');
   const regSwitchRef = useRef<any>(null);
 
   const cuUsernameRef = useRef<any>(null);
@@ -50,7 +56,6 @@ export default function Lobby() {
   const createUserDialogRef = useRef<any>(null);
   const successTimerRef = useRef<any>(null);
   const profileNicknameRef = useRef<any>(null);
-  const profileTitleRef = useRef<any>(null);
   const profilePwdOldRef = useRef<any>(null);
   const profilePwdNewRef = useRef<any>(null);
   const profilePwdConfirmRef = useRef<any>(null);
@@ -65,6 +70,7 @@ export default function Lobby() {
   const adminEditPwdConfirmRef = useRef<any>(null);
 
   const profileDialogRef = useRef<any>(null);
+  const titleManagerDialogRef = useRef<any>(null);
   const adminEditDialogRef = useRef<any>(null);
 
   useEffect(() => {
@@ -230,13 +236,6 @@ export default function Lobby() {
     if (!el) return;
     if (showProfileCenter) {
       el.showModal(); setProfileError(''); setProfileSuccess('');
-      api.getProfile().then(p => {
-        setProfileTitleEnabled(!!p.title_enabled);
-        setTimeout(() => {
-          if (profileTitleRef.current) profileTitleRef.current.value = p.title || '';
-          if (profileNicknameRef.current) profileNicknameRef.current.value = p.nickname || p.username;
-        }, 50);
-      }).catch(() => {});
     }
     else el.close();
   }, [showProfileCenter]);
@@ -245,6 +244,36 @@ export default function Lobby() {
     const el = profileDialogRef.current;
     if (!el) return;
     const handler = () => setShowProfileCenter(false);
+    el.addEventListener('close', handler);
+    return () => el.removeEventListener('close', handler);
+  }, []);
+
+  useEffect(() => {
+    const el = titleManagerDialogRef.current;
+    if (!el) return;
+    if (showTitleManager) {
+      el.showModal();
+      api.getProfile().then(p => {
+        setTitleManagerTitle(p.title || '');
+        setTitleManagerColor(p.title_color || '#00e5ff');
+        setTimeout(() => { if (titleInputRef.current) titleInputRef.current.value = p.title || ''; }, 50);
+      }).catch(() => {});
+    }
+    else el.close();
+  }, [showTitleManager]);
+
+  useEffect(() => {
+    const el = titleInputRef.current;
+    if (!el) return;
+    const handler = (e: any) => setTitleManagerTitle(e.target.value);
+    el.addEventListener('input', handler);
+    return () => el.removeEventListener('input', handler);
+  }, [showTitleManager]);
+
+  useEffect(() => {
+    const el = titleManagerDialogRef.current;
+    if (!el) return;
+    const handler = () => setShowTitleManager(false);
     el.addEventListener('close', handler);
     return () => el.removeEventListener('close', handler);
   }, []);
@@ -363,12 +392,11 @@ export default function Lobby() {
   async function handleUpdateProfile() {
     setProfileError(''); setProfileSuccess('');
     const nickname = profileNicknameRef.current?.value?.trim();
-    const title = profileTitleRef.current?.value?.trim();
     const oldPwd = profilePwdOldRef.current?.value;
     const newPwd = profilePwdNewRef.current?.value;
     const confirmPwd = profilePwdConfirmRef.current?.value;
     try {
-      if (nickname) await api.updateProfile(nickname, title);
+      if (nickname) await api.updateProfile(nickname);
       if (oldPwd && newPwd) {
         if (newPwd.length < 6) { setProfileError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setProfileError('两次密码不一致'); return; }
@@ -377,6 +405,19 @@ export default function Lobby() {
       setProfileSuccess('资料已更新');
       setTimeout(() => { closeNativeDialog(profileDialogRef); setProfileSuccess(''); }, 1500);
     } catch (err: any) { setProfileError(err.message); }
+  }
+
+  async function handleSaveTitle() {
+    setTitleManagerError(''); setTitleManagerSuccess('');
+    const title = titleManagerTitle;
+    if (title.length > 10) { setTitleManagerError('称号最多10个字符'); return; }
+    try {
+      await api.updateProfile(user?.nickname || user?.username || '', title || undefined, titleManagerColor);
+      setTitleManagerSuccess('称号已保存');
+      setTimeout(() => { setShowTitleManager(false); setTitleManagerSuccess(''); }, 1200);
+    } catch (err: any) {
+      setTitleManagerError(err.message);
+    }
   }
 
   async function handleAdminEditUser() {
@@ -391,7 +432,7 @@ export default function Lobby() {
     const confirmPwd = adminEditPwdConfirmRef.current?.value;
     try {
       const newTitle = adminEditTitleRef.current?.value?.trim();
-      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus, title_enabled: adminEditTitleEnabled, title: newTitle });
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus, title_enabled: adminEditTitleEnabled, title: newTitle, title_color: adminEditTitleColor });
       if (newPwd) {
         if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
@@ -434,6 +475,9 @@ export default function Lobby() {
             </md-outlined-button>
           )}
           <md-outlined-button style={{ minWidth: 100 }} onClick={() => setShowProfileCenter(true)}>个人中心</md-outlined-button>
+          {user?.title_enabled ? (
+            <md-outlined-button style={{ minWidth: 100 }} onClick={() => { setShowTitleManager(true); setTitleManagerError(''); setTitleManagerSuccess(''); }}>称号管理</md-outlined-button>
+          ) : null}
           <md-outlined-button style={{ minWidth: 80 }} onClick={logout}>退出</md-outlined-button>
         </div>
       </div>
@@ -512,6 +556,7 @@ export default function Lobby() {
                               if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
                               if (adminEditTitleRef.current) adminEditTitleRef.current.value = u.title || '';
                               setAdminEditTitleEnabled(!!u.title_enabled);
+                              setAdminEditTitleColor(u.title_color || '#00e5ff');
                             }, 50);
                           }}>修改信息</md-text-button>
                           <md-text-button style={{ minWidth: 60 }} onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
@@ -639,10 +684,10 @@ export default function Lobby() {
               ) : (
                 onlineUsers.map(u => {
                   const name = (u as any).nickname || (u as any).username || `用户 #${u.id}`;
-                  const hasTitle = (u as any).title && (u as any).title_enabled;
+                  const hasPerm = (u as any).title_enabled;
                   return (
-                    <div key={u.id} className="online-chip" style={hasTitle ? { color: '#00e5ff' } : undefined}>
-                      {hasTitle ? `『${(u as any).title}』` : ''}{name}
+                    <div key={u.id} className="online-chip" style={hasPerm ? { color: (u as any).title_color || '#00e5ff' } : undefined}>
+                      {hasPerm && (u as any).title ? `『${(u as any).title}』` : ''}{name}
                     </div>
                   );
                 })
@@ -664,9 +709,6 @@ export default function Lobby() {
               <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>邮箱: {user?.email || '未绑定'}</div>
               <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>用户名: {user?.username}</div>
             </div>
-            {profileTitleEnabled ? (
-              <md-outlined-text-field ref={profileTitleRef} label="称号（最多10个字符）" type="text" value={user?.title || ''} style={{ marginBottom: 12 }}></md-outlined-text-field>
-            ) : null}
             <md-outlined-text-field ref={profileNicknameRef} label="昵称" type="text" value={user?.nickname || user?.username}></md-outlined-text-field>
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginTop: 4 }}>
               <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>修改密码（选填）</p>
@@ -680,6 +722,34 @@ export default function Lobby() {
         <div className="md-dialog-actions">
           {!profileSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(profileDialogRef)}>关闭</md-outlined-button>}
           {!profileSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleUpdateProfile}>保存</md-filled-button>}
+        </div>
+      </dialog>
+
+      {/* Title manager dialog */}
+      <dialog ref={titleManagerDialogRef} className="md-dialog-custom" style={{ minWidth: 400 }}>
+        <div className="md-dialog-headline">称号管理</div>
+        {titleManagerSuccess ? (
+          <div className="md-dialog-content" style={{ color: '#43a047', fontSize: 15, textAlign: 'center' }}>{titleManagerSuccess}</div>
+        ) : (
+          <div className="md-dialog-content">
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 14, marginBottom: 14, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>预览效果</div>
+              <div style={{ fontSize: 18, color: titleManagerColor || '#00e5ff' }}>
+                {titleManagerTitle ? `『${titleManagerTitle}』` : ''}{user?.nickname || user?.username}
+              </div>
+            </div>
+            <md-outlined-text-field ref={titleInputRef} label="称号（最多10个字符，可留空）" type="text" style={{ marginBottom: 14 }}></md-outlined-text-field>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 14, color: '#ccc' }}>展示颜色</span>
+              <input type="color" value={titleManagerColor} onChange={(e) => setTitleManagerColor(e.target.value)} style={{ width: 48, height: 32, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+              <span style={{ fontSize: 12, color: '#aaa' }}>{titleManagerColor}</span>
+            </div>
+            {titleManagerError && <div className="form-error" style={{ marginTop: 8 }}>{titleManagerError}</div>}
+          </div>
+        )}
+        <div className="md-dialog-actions">
+          {!titleManagerSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(titleManagerDialogRef)}>取消</md-outlined-button>}
+          {!titleManagerSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleSaveTitle}>保存</md-filled-button>}
         </div>
       </dialog>
 
@@ -704,7 +774,14 @@ export default function Lobby() {
             <md-switch ref={adminTitleSwitchRef} selected={adminEditTitleEnabled || undefined}></md-switch>
           </div>
           {adminEditTitleEnabled && (
-            <md-outlined-text-field ref={adminEditTitleRef} label="称号（最多10个字符）" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+            <>
+              <md-outlined-text-field ref={adminEditTitleRef} label="称号（最多10个字符）" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <span style={{ fontSize: 14, color: '#ccc' }}>称号颜色</span>
+                <input type="color" value={adminEditTitleColor} onChange={(e) => setAdminEditTitleColor(e.target.value)} style={{ width: 48, height: 32, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                <span style={{ fontSize: 12, color: '#aaa' }}>{adminEditTitleColor}</span>
+              </div>
+            </>
           )}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
             <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>重置密码（选填）</p>

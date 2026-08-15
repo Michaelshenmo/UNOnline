@@ -132,7 +132,7 @@ class GameManager {
 
     const playerInfos = room.players.map(p => {
       const t = options.titleMap ? options.titleMap[p.id] : null;
-      return { id: p.id, username: p.username, status: 'normal', title: t ? t.title : null, title_enabled: t ? t.title_enabled : 0 };
+      return { id: p.id, username: p.username, status: 'normal', title: t ? t.title : null, title_enabled: t ? t.title_enabled : 0, title_color: t ? t.title_color : '#00e5ff' };
     });
     let engine;
     if (room.gameMode === 'flip') {

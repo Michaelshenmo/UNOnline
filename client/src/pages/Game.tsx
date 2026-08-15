@@ -186,10 +186,11 @@ export default function Game() {
   function confirmZeroPlay() { closeWithAnim(() => { getSocket().emit('confirm_zero'); setShowZeroConfirm(false); }); }
 
   const renderPlayerName = (p: any) => {
-    const hasTitle = p.title && p.title_enabled;
-    return hasTitle
-      ? <span style={{ color: '#00e5ff' }}>『{p.title}』{p.nickname || p.username}</span>
-      : <>{p.nickname || p.username}</>;
+    if (p.title_enabled) {
+      const color = p.title_color || '#00e5ff';
+      return <span style={{ color }}>{p.title ? `『${p.title}』` : ''}{p.nickname || p.username}</span>;
+    }
+    return <>{p.nickname || p.username}</>;
   };
 
   const colorDot = (c: string | null) => {

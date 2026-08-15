@@ -68,7 +68,7 @@ export class NoMercyEngine {
   initialize(playerInfos) {
     this.reset();
     this.players = playerInfos.map(p => ({
-      id: p.id, username: p.username, title: p.title || null, title_enabled: p.title_enabled ? 1 : 0, hand: [], calledUno: false, isOut: false,
+      id: p.id, username: p.username, title: p.title || null, title_enabled: p.title_enabled ? 1 : 0, title_color: p.title_color || '#00e5ff', hand: [], calledUno: false, isOut: false,
     }));
     this.drawPile = shuffle(createDeck());
     for (const p of this.players) p.hand = this.drawPile.splice(0, 7);
@@ -440,7 +440,7 @@ export class NoMercyEngine {
       maxHand: this.maxHand,
       state: this.state,
       players: this.players.map(p => ({
-        id: p.id, username: p.username, title: p.title, title_enabled: p.title_enabled, cardCount: p.hand.length,
+        id: p.id, username: p.username, title: p.title, title_enabled: p.title_enabled, title_color: p.title_color, cardCount: p.hand.length,
         calledUno: p.calledUno, isOut: p.isOut,
         hand: p.id === playerId ? p.hand : undefined,
       })),

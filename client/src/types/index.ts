@@ -5,6 +5,7 @@ export interface User {
   email?: string | null;
   title?: string | null;
   title_enabled?: number | boolean;
+  title_color?: string;
   role: 'player' | 'admin';
   status?: 'normal' | 'banned';
 }
@@ -21,6 +22,7 @@ export interface PlayerState {
   nickname?: string;
   title?: string | null;
   title_enabled?: number | boolean;
+  title_color?: string;
   status?: string;
   cardCount: number;
   calledUno: boolean;
