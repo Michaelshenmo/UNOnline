@@ -10,6 +10,7 @@ import { verifyToken } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import manager from './game/manager.js';
+import { getTitleData, isTitleActive } from './title.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -29,8 +30,8 @@ function enrichRoom(room) {
   if (!room) return room;
   const result = { ...room, players: room.players.map(p => ({ ...p })) };
   for (const p of result.players) {
-    const row = db.prepare('SELECT title, title_enabled, title_color FROM users WHERE id = ?').get(p.id);
-    if (row) { p.title = row.title; p.title_enabled = row.title_enabled; p.title_color = row.title_color || '#00e5ff'; }
+    const t = getTitleData(p.id);
+    p.title = t.title; p.title_enabled = t.title_enabled; p.title_color = t.title_color;
   }
   return result;
 }
@@ -56,11 +57,15 @@ app.get('/api/online-users', (req, res) => {
   const token = authHeader && authHeader.split(' ')[1];
   const user = token ? verifyToken(token) : null;
   const onlineIds = manager.getOnlineUsers(user?.id).map(u => u.id);
-  const users = onlineIds.length > 0
-    ? db.prepare(`SELECT id, username, nickname, title, title_enabled, title_color FROM users WHERE id IN (${onlineIds.join(',')})`).all()
+  const baseUsers = onlineIds.length > 0
+    ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${onlineIds.join(',')})`).all()
     : [];
-  users.sort((a, b) => ((b.title_enabled && b.title) ? 1 : 0) - ((a.title_enabled && a.title) ? 1 : 0));
-  res.json(users);
+  const enriched = baseUsers.map(u => {
+    const t = getTitleData(u.id);
+    return { ...u, title: t.title, title_enabled: t.title_enabled, title_color: t.title_color };
+  });
+  enriched.sort((a, b) => ((b.title_enabled && b.title) ? 1 : 0) - ((a.title_enabled && a.title) ? 1 : 0));
+  res.json(enriched);
 });
 
 app.use(express.static(path.join(__dirname, '..', '..', 'client', 'dist')));
@@ -239,9 +244,9 @@ io.on('connection', (socket) => {
     }
     const thresholdRow = db.prepare("SELECT value FROM system_settings WHERE key = 'no_mercy_threshold'").get();
     const noMercyThreshold = parseInt(thresholdRow?.value) || 40;
-    const titleRows = db.prepare('SELECT id, title, title_enabled, title_color FROM users').all();
+    const titleRows = db.prepare('SELECT id FROM users').all();
     const titleMap = {};
-    titleRows.forEach(t => { titleMap[t.id] = { title: t.title, title_enabled: t.title_enabled, title_color: t.title_color || '#00e5ff' }; });
+    titleRows.forEach(t => { titleMap[t.id] = getTitleData(t.id); });
     const result = manager.startGame(room.id, currentUser.id, { noMercyThreshold, titleMap });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     for (const player of room.engine.players) {
@@ -437,9 +442,13 @@ io.on('connection', (socket) => {
     for (const [uid, sid] of userSocketMap) {
       ids.push(uid);
     }
-    const users = ids.length > 0
-      ? db.prepare(`SELECT id, username, nickname, title, title_enabled, title_color FROM users WHERE id IN (${ids.join(',')})`).all()
+    const baseUsers = ids.length > 0
+      ? db.prepare(`SELECT id, username, nickname FROM users WHERE id IN (${ids.join(',')})`).all()
       : [];
+    const users = baseUsers.map(u => {
+      const t = getTitleData(u.id);
+      return { ...u, title: t.title, title_enabled: t.title_enabled, title_color: t.title_color };
+    });
     users.sort((a, b) => ((b.title_enabled && b.title) ? 1 : 0) - ((a.title_enabled && a.title) ? 1 : 0));
     io.emit('online_users', users);
   }

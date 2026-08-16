@@ -25,18 +25,24 @@ export default function Lobby() {
   const [announcementVersion, setAnnouncementVersion] = useState(0);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showTitleManager, setShowTitleManager] = useState(false);
+  const [userTitleEnabled, setUserTitleEnabled] = useState(false);
   const [titleManagerTitle, setTitleManagerTitle] = useState('');
   const [titleManagerColor, setTitleManagerColor] = useState('#00e5ff');
   const [titleManagerError, setTitleManagerError] = useState('');
   const [titleManagerSuccess, setTitleManagerSuccess] = useState('');
-  const titleInputRef = useRef<any>(null);
+  const userTitleInputRef = useRef<any>(null);
   const [showProfileCenter, setShowProfileCenter] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [adminEditTarget, setAdminEditTarget] = useState<any | null>(null);
   const [adminEditError, setAdminEditError] = useState('');
-  const [adminEditTitleEnabled, setAdminEditTitleEnabled] = useState(false);
   const [adminEditTitleColor, setAdminEditTitleColor] = useState('#00e5ff');
+  const [adminTitleManagerOpen, setAdminTitleManagerOpen] = useState(false);
+  const [adminTitlePermanent, setAdminTitlePermanent] = useState(false);
+  const [adminTitleValue, setAdminTitleValue] = useState('');
+  const [adminTitleExpiry, setAdminTitleExpiry] = useState('');
+  const [adminTitleManagerError, setAdminTitleManagerError] = useState('');
+  const [adminTitleManagerSuccess, setAdminTitleManagerSuccess] = useState('');
   const regSwitchRef = useRef<any>(null);
 
   const cuUsernameRef = useRef<any>(null);
@@ -64,14 +70,15 @@ export default function Lobby() {
   const adminEditEmailRef = useRef<any>(null);
   const adminEditRoleRef = useRef<any>(null);
   const adminEditStatusRef = useRef<any>(null);
-  const adminEditTitleRef = useRef<any>(null);
   const adminTitleSwitchRef = useRef<any>(null);
+  const adminTitleInputRef = useRef<any>(null);
   const adminEditPwdRef = useRef<any>(null);
   const adminEditPwdConfirmRef = useRef<any>(null);
 
   const profileDialogRef = useRef<any>(null);
   const titleManagerDialogRef = useRef<any>(null);
   const adminEditDialogRef = useRef<any>(null);
+  const adminTitleManagerDialogRef = useRef<any>(null);
 
   useEffect(() => {
     const s = getSocket();
@@ -98,6 +105,7 @@ export default function Lobby() {
     fetchRooms();
     fetchOnlineUsers();
     checkAnnouncement();
+    api.getProfile().then(p => setUserTitleEnabled(!!p.title_enabled)).catch(() => {});
 
     return () => {
       s.off('rooms_update');
@@ -256,14 +264,14 @@ export default function Lobby() {
       api.getProfile().then(p => {
         setTitleManagerTitle(p.title || '');
         setTitleManagerColor(p.title_color || '#00e5ff');
-        setTimeout(() => { if (titleInputRef.current) titleInputRef.current.value = p.title || ''; }, 50);
+        setTimeout(() => { if (userTitleInputRef.current) userTitleInputRef.current.value = p.title || ''; }, 50);
       }).catch(() => {});
     }
     else el.close();
   }, [showTitleManager]);
 
   useEffect(() => {
-    const el = titleInputRef.current;
+    const el = userTitleInputRef.current;
     if (!el) return;
     const handler = (e: any) => setTitleManagerTitle(e.target.value);
     el.addEventListener('input', handler);
@@ -278,7 +286,36 @@ export default function Lobby() {
     return () => el.removeEventListener('close', handler);
   }, []);
 
+  useEffect(() => {
+    const el = adminTitleManagerDialogRef.current;
+    if (!el) return;
+    if (adminEditTarget && adminTitleManagerOpen) el.showModal();
+    else el.close();
+  }, [adminTitleManagerOpen, adminEditTarget]);
 
+  useEffect(() => {
+    const el = adminTitleManagerDialogRef.current;
+    if (!el) return;
+    const handler = () => setAdminTitleManagerOpen(false);
+    el.addEventListener('close', handler);
+    return () => el.removeEventListener('close', handler);
+  }, []);
+
+  useEffect(() => {
+    customElements.whenDefined('md-switch').then(() => {
+      if (adminTitleSwitchRef.current) {
+        adminTitleSwitchRef.current.selected = adminTitlePermanent;
+      }
+    });
+  }, [adminTitlePermanent]);
+
+  useEffect(() => {
+    const el = adminTitleInputRef.current;
+    if (!el) return;
+    const handler = (e: any) => setAdminTitleValue(e.target.value);
+    el.addEventListener('input', handler);
+    return () => el.removeEventListener('input', handler);
+  }, [adminTitleManagerOpen]);
 
   useEffect(() => {
     const el = adminEditDialogRef.current;
@@ -309,14 +346,6 @@ export default function Lobby() {
     el.addEventListener('close', handler);
     return () => el.removeEventListener('close', handler);
   }, []);
-
-  useEffect(() => {
-    customElements.whenDefined('md-switch').then(() => {
-      if (adminTitleSwitchRef.current) {
-        adminTitleSwitchRef.current.selected = adminEditTitleEnabled;
-      }
-    });
-  }, [adminEditTitleEnabled]);
 
   async function fetchRooms() {
     try { setRooms(await api.getRooms()); } catch {}
@@ -420,6 +449,44 @@ export default function Lobby() {
     }
   }
 
+  function openAdminTitleManager() {
+    const t = adminEditTarget;
+    if (!t) return;
+    setAdminEditTitleColor(t.title_color || '#00e5ff');
+    setAdminTitlePermanent(!!t.title_permanent);
+    let exp = '';
+    if (t.title_expiry && new Date(t.title_expiry).getTime() > 0) {
+      const d = new Date(t.title_expiry);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      exp = local.toISOString().slice(0, 16);
+    }
+    setAdminTitleExpiry(exp);
+    setAdminTitleManagerError(''); setAdminTitleManagerSuccess('');
+    setAdminTitleValue(t.title || '');
+    setTimeout(() => { if (adminTitleInputRef.current) adminTitleInputRef.current.value = t.title || ''; }, 50);
+    setAdminTitleManagerOpen(true);
+  }
+
+  async function handleAdminSaveTitle() {
+    setAdminTitleManagerError(''); setAdminTitleManagerSuccess('');
+    const title = adminTitleValue;
+    if (title.length > 10) { setAdminTitleManagerError('称号最多10个字符'); return; }
+    const expiryISO = adminTitlePermanent ? undefined : (adminTitleExpiry ? new Date(adminTitleExpiry).toISOString() : '1970-01-01T00:00:00.000Z');
+    try {
+      await api.adminUpdateUser(adminEditTarget.id, {
+        title: title || undefined,
+        title_color: adminEditTitleColor,
+        title_permanent: adminTitlePermanent,
+        title_expiry: expiryISO,
+      });
+      setAdminEditTarget(prev => prev ? { ...prev, title: title || null, title_color: adminEditTitleColor, title_permanent: adminTitlePermanent ? 1 : 0, title_expiry: expiryISO || null } : prev);
+      setAdminTitleManagerSuccess('称号已保存');
+      setTimeout(() => { setAdminTitleManagerOpen(false); setAdminTitleManagerSuccess(''); loadAdminData(); }, 1200);
+    } catch (err: any) {
+      setAdminTitleManagerError(err.message);
+    }
+  }
+
   async function handleAdminEditUser() {
     if (!adminEditTarget) return;
     setAdminEditError('');
@@ -431,8 +498,7 @@ export default function Lobby() {
     const newPwd = adminEditPwdRef.current?.value;
     const confirmPwd = adminEditPwdConfirmRef.current?.value;
     try {
-      const newTitle = adminEditTitleRef.current?.value?.trim();
-      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus, title_enabled: adminEditTitleEnabled, title: newTitle, title_color: adminEditTitleColor });
+      await api.adminUpdateUser(adminEditTarget.id, { username: newUsername, nickname: newNickname, email: newEmail, role: newRole, status: newStatus });
       if (newPwd) {
         if (newPwd.length < 6) { setAdminEditError('新密码至少6个字符'); return; }
         if (newPwd !== confirmPwd) { setAdminEditError('两次密码不一致'); return; }
@@ -461,6 +527,7 @@ export default function Lobby() {
   }
 
   const isBanned = user?.status === 'banned';
+  const canUseTitle = !!user?.title_permanent || (!!user?.title_expiry && new Date(user.title_expiry).getTime() > Date.now());
   const currentRoom = rooms.find(r => r.players.some(p => p.id === user?.id));
 
   return (
@@ -475,7 +542,7 @@ export default function Lobby() {
             </md-outlined-button>
           )}
           <md-outlined-button style={{ minWidth: 100 }} onClick={() => setShowProfileCenter(true)}>个人中心</md-outlined-button>
-          {user?.title_enabled ? (
+          {(canUseTitle || userTitleEnabled) ? (
             <md-outlined-button style={{ minWidth: 100 }} onClick={() => { setShowTitleManager(true); setTitleManagerError(''); setTitleManagerSuccess(''); }}>称号管理</md-outlined-button>
           ) : null}
           <md-outlined-button style={{ minWidth: 80 }} onClick={logout}>退出</md-outlined-button>
@@ -554,9 +621,6 @@ export default function Lobby() {
                               if (adminEditStatusRef.current) adminEditStatusRef.current.value = u.status || 'normal';
                               if (adminEditPwdRef.current) adminEditPwdRef.current.value = '';
                               if (adminEditPwdConfirmRef.current) adminEditPwdConfirmRef.current.value = '';
-                              if (adminEditTitleRef.current) adminEditTitleRef.current.value = u.title || '';
-                              setAdminEditTitleEnabled(!!u.title_enabled);
-                              setAdminEditTitleColor(u.title_color || '#00e5ff');
                             }, 50);
                           }}>修改信息</md-text-button>
                           <md-text-button style={{ minWidth: 60 }} onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id || undefined}>删除</md-text-button>
@@ -738,7 +802,7 @@ export default function Lobby() {
                 {titleManagerTitle ? `『${titleManagerTitle}』` : ''}{user?.nickname || user?.username}
               </div>
             </div>
-            <md-outlined-text-field ref={titleInputRef} label="称号（最多10个字符，可留空）" type="text" style={{ marginBottom: 14 }}></md-outlined-text-field>
+            <md-outlined-text-field ref={userTitleInputRef} label="称号（最多10个字符，可留空）" type="text" style={{ marginBottom: 14 }}></md-outlined-text-field>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 14, color: '#ccc' }}>展示颜色</span>
               <input type="color" value={titleManagerColor} onChange={(e) => setTitleManagerColor(e.target.value)} style={{ width: 48, height: 32, border: 'none', background: 'transparent', cursor: 'pointer' }} />
@@ -769,20 +833,9 @@ export default function Lobby() {
             <md-select-option value="normal"><div slot="headline">正常</div></md-select-option>
             <md-select-option value="banned"><div slot="headline">被封禁</div></md-select-option>
           </md-outlined-select>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, cursor: 'pointer' }} onClick={() => setAdminEditTitleEnabled(!adminEditTitleEnabled)}>
-            <span style={{ fontSize: 14, color: '#ccc' }}>启用称号</span>
-            <md-switch ref={adminTitleSwitchRef} selected={adminEditTitleEnabled || undefined}></md-switch>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginBottom: 12 }}>
+            <md-outlined-button style={{ minWidth: 140 }} onClick={() => { openAdminTitleManager(); }}>称号管理</md-outlined-button>
           </div>
-          {adminEditTitleEnabled && (
-            <>
-              <md-outlined-text-field ref={adminEditTitleRef} label="称号（最多10个字符）" type="text" style={{ marginBottom: 12 }}></md-outlined-text-field>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <span style={{ fontSize: 14, color: '#ccc' }}>称号颜色</span>
-                <input type="color" value={adminEditTitleColor} onChange={(e) => setAdminEditTitleColor(e.target.value)} style={{ width: 48, height: 32, border: 'none', background: 'transparent', cursor: 'pointer' }} />
-                <span style={{ fontSize: 12, color: '#aaa' }}>{adminEditTitleColor}</span>
-              </div>
-            </>
-          )}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
             <p style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>重置密码（选填）</p>
             <md-outlined-text-field ref={adminEditPwdRef} label="新密码" type="password" style={{ marginBottom: 12 }}></md-outlined-text-field>
@@ -793,6 +846,46 @@ export default function Lobby() {
         <div className="md-dialog-actions">
           <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(adminEditDialogRef)}>取消</md-outlined-button>
           <md-filled-button style={{ minWidth: 100 }} onClick={handleAdminEditUser}>保存</md-filled-button>
+        </div>
+      </dialog>
+
+      {/* Admin title manager dialog */}
+      <dialog ref={adminTitleManagerDialogRef} className="md-dialog-custom" style={{ minWidth: 420 }}>
+        <div className="md-dialog-headline">称号管理</div>
+        {adminTitleManagerSuccess ? (
+          <div className="md-dialog-content" style={{ color: '#43a047', fontSize: 15, textAlign: 'center' }}>{adminTitleManagerSuccess}</div>
+        ) : (
+          <div className="md-dialog-content">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, cursor: 'pointer' }} onClick={() => setAdminTitlePermanent(!adminTitlePermanent)}>
+              <span style={{ fontSize: 14, color: '#ccc' }}>永久</span>
+              <md-switch ref={adminTitleSwitchRef} selected={adminTitlePermanent || undefined}></md-switch>
+            </div>
+            {!adminTitlePermanent && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="md-outlined-input-wrap">
+                  <input type="datetime-local" value={adminTitleExpiry} onChange={(e) => setAdminTitleExpiry(e.target.value)} placeholder=" " className={adminTitleExpiry ? 'has-value' : ''} />
+                  <span className="md-outlined-input-label">过期时间</span>
+                </div>
+              </div>
+            )}
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 14, marginBottom: 14, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>预览效果</div>
+              <div style={{ fontSize: 18, color: adminEditTitleColor || '#00e5ff' }}>
+                {adminTitleValue ? `『${adminTitleValue}』` : ''}{adminEditTarget?.nickname || adminEditTarget?.username}
+              </div>
+            </div>
+            <md-outlined-text-field ref={adminTitleInputRef} label="称号（最多10个字符，可留空）" type="text" style={{ marginBottom: 14 }}></md-outlined-text-field>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 14, color: '#ccc' }}>展示颜色</span>
+              <input type="color" value={adminEditTitleColor} onChange={(e) => setAdminEditTitleColor(e.target.value)} style={{ width: 48, height: 32, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+              <span style={{ fontSize: 12, color: '#aaa' }}>{adminEditTitleColor}</span>
+            </div>
+            {adminTitleManagerError && <div className="form-error" style={{ marginTop: 8 }}>{adminTitleManagerError}</div>}
+          </div>
+        )}
+        <div className="md-dialog-actions">
+          {!adminTitleManagerSuccess && <md-outlined-button style={{ minWidth: 100 }} onClick={() => closeNativeDialog(adminTitleManagerDialogRef)}>取消</md-outlined-button>}
+          {!adminTitleManagerSuccess && <md-filled-button style={{ minWidth: 100 }} onClick={handleAdminSaveTitle}>保存</md-filled-button>}
         </div>
       </dialog>
 

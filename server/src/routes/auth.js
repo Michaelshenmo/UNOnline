@@ -4,6 +4,7 @@ import db from '../db.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
 import { generateCode, verifyCode, canSend, markSent } from '../verification.js';
 import { sendMail } from '../mail.js';
+import { getTitleData, isTitleActive } from '../title.js';
 
 const router = Router();
 
@@ -93,7 +94,7 @@ router.post('/register', async (req, res) => {
   const hash = bcrypt.hashSync(password, 10);
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   const role = userCount === 0 ? 'admin' : 'player';
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role) VALUES (?, ?, ?, ?, ?)').run(username, hash, nickname || username, finalEmail || null, role);
+  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role, title_permanent, title_expiry) VALUES (?, ?, ?, ?, ?, 0, ?)').run(username, hash, nickname || username, finalEmail || null, role, '1970-01-01T00:00:00.000Z');
   const user = { id: result.lastInsertRowid, username, nickname: nickname || username, role };
   const token = generateToken(user);
 
@@ -112,13 +113,14 @@ router.post('/login', (req, res) => {
   }
 
   const token = generateToken(user);
-  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status, email: user.email || null, title: user.title || null, title_enabled: user.title_enabled || 0, title_color: user.title_color || '#00e5ff' } });
+  res.json({ token, user: { id: user.id, username: user.username, nickname: user.nickname, role: user.role, status: user.status, email: user.email || null, title: user.title || null, title_enabled: isTitleActive(user) ? 1 : 0, title_color: user.title_color || '#00e5ff', title_permanent: user.title_permanent, title_expiry: user.title_expiry } });
 });
 
 router.get('/profile', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, email, title, title_enabled, title_color, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, email, title, title_enabled, title_color, title_permanent, title_expiry, role, status, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
-  res.json(user);
+  const t = getTitleData(user.id);
+  res.json({ ...user, title: t.title, title_enabled: t.title_enabled, title_color: t.title_color });
 });
 
 router.put('/password', authenticateToken, (req, res) => {
@@ -149,8 +151,8 @@ router.put('/profile', authenticateToken, (req, res) => {
   if (!user) return res.status(404).json({ error: '用户不存在' });
   if (user.status === 'banned') return res.status(403).json({ error: '账号已被封禁' });
 
-  if (title !== undefined && !user.title_enabled) {
-    return res.status(403).json({ error: '未启用称号功能' });
+  if (title !== undefined && !isTitleActive(user)) {
+    return res.status(403).json({ error: '无权限修改称号或称号已过期' });
   }
   if (title !== undefined && title.length > 10) {
     return res.status(400).json({ error: '称号最多10个字符' });

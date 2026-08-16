@@ -7,7 +7,7 @@ import { testSmtp, sendTestMail } from '../mail.js';
 const router = Router();
 
 router.get('/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, nickname, email, role, status, title, title_enabled, title_color, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, nickname, email, role, status, title, title_enabled, title_color, title_permanent, title_expiry, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -116,7 +116,7 @@ router.post('/users', authenticateToken, requireAdmin, (req, res) => {
 
   const hash = bcrypt.hashSync(password, 10);
   const userRole = role === 'admin' ? 'admin' : 'player';
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role) VALUES (?, ?, ?, ?, ?)').run(username, hash, nickname || username, email || null, userRole);
+  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, email, role, title_permanent, title_expiry) VALUES (?, ?, ?, ?, ?, 0, ?)').run(username, hash, nickname || username, email || null, userRole, '1970-01-01T00:00:00.000Z');
   res.json({ message: '用户已创建', user: { id: result.lastInsertRowid, username, nickname: nickname || username, email: email || null, role: userRole } });
 });
 
@@ -138,7 +138,7 @@ router.put('/users/:id/password', authenticateToken, requireAdmin, (req, res) =>
 });
 
 router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
-  const { username, nickname, email, role, status, title_enabled, title, title_color } = req.body;
+  const { username, nickname, email, role, status, title_enabled, title, title_color, title_permanent, title_expiry } = req.body;
   const targetId = parseInt(req.params.id);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId);
   if (!user) return res.status(404).json({ error: '用户不存在' });
@@ -160,28 +160,26 @@ router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
   if (title_color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(title_color)) {
     return res.status(400).json({ error: '颜色格式无效' });
   }
-
-  // Admin cannot change own status or role
-  if (targetId === req.user.id) {
-    const newUsername = username || user.username;
-    const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
-    const newEmail = email !== undefined ? (email || null) : user.email;
-    const newTitleEnabled = title_enabled !== undefined ? (title_enabled === true || title_enabled === 'true' ? 1 : 0) : user.title_enabled;
-    const newTitle = title !== undefined ? (title || null) : user.title;
-    const newTitleColor = title_color !== undefined ? title_color : (user.title_color || '#00e5ff');
-    db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, title_enabled = ?, title = ?, title_color = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newTitleEnabled, newTitle, newTitleColor, targetId);
-    return res.json({ message: '用户资料已更新' });
+  if (title_expiry && isNaN(new Date(title_expiry).getTime())) {
+    return res.status(400).json({ error: '过期时间格式无效' });
   }
 
   const newUsername = username || user.username;
   const newNickname = nickname !== undefined ? (nickname || newUsername) : user.nickname;
   const newEmail = email !== undefined ? (email || null) : user.email;
-  const newRole = role || user.role;
-  const newStatus = status || user.status;
   const newTitleEnabled = title_enabled !== undefined ? (title_enabled === true || title_enabled === 'true' ? 1 : 0) : user.title_enabled;
   const newTitle = title !== undefined ? (title || null) : user.title;
   const newTitleColor = title_color !== undefined ? title_color : (user.title_color || '#00e5ff');
-  db.prepare('UPDATE users SET username = ?, nickname = ?, email = ?, role = ?, status = ?, title_enabled = ?, title = ?, title_color = ? WHERE id = ?').run(newUsername, newNickname, newEmail, newRole, newStatus, newTitleEnabled, newTitle, newTitleColor, targetId);
+  const newTitlePermanent = title_permanent !== undefined ? (title_permanent === true || title_permanent === 'true' ? 1 : 0) : (user.title_permanent !== undefined ? user.title_permanent : 0);
+  const newTitleExpiry = title_expiry !== undefined ? (title_expiry || null) : (user.title_expiry || null);
+
+  const updateSql = targetId === req.user.id
+    ? 'UPDATE users SET username = ?, nickname = ?, email = ?, title_enabled = ?, title = ?, title_color = ?, title_permanent = ?, title_expiry = ? WHERE id = ?'
+    : 'UPDATE users SET username = ?, nickname = ?, email = ?, role = ?, status = ?, title_enabled = ?, title = ?, title_color = ?, title_permanent = ?, title_expiry = ? WHERE id = ?';
+  const params = targetId === req.user.id
+    ? [newUsername, newNickname, newEmail, newTitleEnabled, newTitle, newTitleColor, newTitlePermanent, newTitleExpiry, targetId]
+    : [newUsername, newNickname, newEmail, role || user.role, status !== undefined ? status : user.status, newTitleEnabled, newTitle, newTitleColor, newTitlePermanent, newTitleExpiry, targetId];
+  db.prepare(updateSql).run(...params);
   res.json({ message: '用户资料已更新' });
 });
 
