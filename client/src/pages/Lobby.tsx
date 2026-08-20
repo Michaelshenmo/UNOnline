@@ -54,6 +54,7 @@ export default function Lobby() {
   const turnTimeoutRef = useRef<any>(null);
   const unoPenaltyRef = useRef<any>(null);
   const noMercyThresholdRef = useRef<any>(null);
+  const announcementRef = useRef<any>(null);
   const smtpHostRef = useRef<any>(null);
   const smtpPortRef = useRef<any>(null);
   const smtpUserRef = useRef<any>(null);
@@ -325,6 +326,19 @@ export default function Lobby() {
   }, [adminEditTarget]);
 
   useEffect(() => {
+    const el = announcementRef.current;
+    if (!el) return;
+    const handler = (e: any) => setEditSettings(prev => ({ ...prev, announcement: e.target.value }));
+    el.addEventListener('input', handler);
+    return () => el.removeEventListener('input', handler);
+  }, [adminTab]);
+
+  useEffect(() => {
+    if (adminTab !== 'settings') return;
+    if (announcementRef.current) announcementRef.current.value = editSettings.announcement || '';
+  }, [adminTab]);
+
+  useEffect(() => {
     if (adminTab !== 'email') return;
     const fieldRefs: any = { smtp_host: smtpHostRef, smtp_port: smtpPortRef, smtp_user: smtpUserRef, smtp_password: smtpPasswordRef, smtp_from: smtpFromRef };
     const pairs = Object.entries(fieldRefs).map(([key, ref]: any) => [ref.current, key]);
@@ -375,6 +389,7 @@ export default function Lobby() {
       setEditSettings(s);
       setAnnouncement(s.announcement || '');
       setAnnouncementVersion(parseInt(s.announcement_version) || 0);
+      setTimeout(() => { if (announcementRef.current) announcementRef.current.value = s.announcement || ''; }, 50);
     } catch (e: any) {
       setError(e.message || '加载管理数据失败');
     }
@@ -651,10 +666,7 @@ export default function Lobby() {
                     <md-outlined-text-field ref={noMercyThresholdRef} label="No Mercy 爆牌阈值 (20-100)" type="number" value={editSettings.no_mercy_threshold || '40'}></md-outlined-text-field>
                   </div>
                   <div>
-                    <div className="md-outlined-textarea-wrap">
-                      <textarea value={editSettings.announcement || ''} onChange={(e) => setEditSettings({...editSettings, announcement: e.target.value})} rows={4} placeholder=" "></textarea>
-                      <span className="md-outlined-textarea-label">公告内容（支持 HTML）</span>
-                    </div>
+                    <md-outlined-text-field ref={announcementRef} label="公告内容（支持 HTML）" type="textarea" rows="4"></md-outlined-text-field>
                   </div>
                   <div>
                     <md-filled-button style={{ minWidth: 200 }} onClick={handleSaveSettings}>保存设置</md-filled-button>

@@ -217,7 +217,8 @@ dialog.md-dialog-custom { animation: slideUp 0.2s ease; }
 }
 .md-outlined-textarea-wrap textarea:focus { border: 2px solid var(--md-sys-color-primary); padding: 15px 15px 11px; }
 .md-outlined-textarea-wrap textarea:focus + .md-outlined-textarea-label,
-.md-outlined-textarea-wrap textarea:not(:placeholder-shown) + .md-outlined-textarea-label {
+.md-outlined-textarea-wrap textarea:not(:placeholder-shown) + .md-outlined-textarea-label,
+.md-outlined-textarea-wrap textarea.has-value + .md-outlined-textarea-label {
   top: -8px;
   font-size: 11px;
   color: var(--md-sys-color-primary);
